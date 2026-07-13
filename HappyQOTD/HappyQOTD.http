@@ -1,0 +1,6 @@
+@HappyQOTD_HostAddress = http://localhost:5269
+
+GET {{HappyQOTD_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
