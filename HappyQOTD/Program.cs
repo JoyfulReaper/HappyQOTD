@@ -87,6 +87,7 @@ app.Use((context, next) =>
     return next();
 });
 
+app.UseForwardedHeaders(forwardedOptions);
 app.UseRateLimiter();
 
 // Configure the HTTP request pipeline.
