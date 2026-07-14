@@ -1,8 +1,12 @@
+using HappyQOTD.Quotes;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+builder.Services.AddSingleton<IQuoteProvider, InMemoryQuoteProvider>();
 
 var app = builder.Build();
 
@@ -13,11 +17,20 @@ if (app.Environment.IsDevelopment())
 }
 
 
-app.MapGet("/weatherforecast", () =>
+app.MapGet("/", () =>
 {
-    var forecast = "Hello World";
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+    return "HappyQOTD";
+});
+
+app.MapGet(
+    "/api/quotes/random",
+(IQuoteProvider quoteProvider) =>
+{
+    var quote = quoteProvider.GetRandomQuote();
+
+    return quote is null
+        ? Results.NotFound()
+        : Results.Ok(quote);
+});
 
 app.Run();
