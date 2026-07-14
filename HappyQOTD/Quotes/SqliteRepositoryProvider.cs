@@ -29,7 +29,12 @@ public sealed class SqliteRepositoryProvider : IQuoteRepository
             @Text,
             @Author,
             @Source
-        );
+        )
+        RETURNING
+            Id,
+            Text,
+            Author,
+            Source;
         """;
 
     private readonly string _connectionString;
@@ -57,16 +62,34 @@ public sealed class SqliteRepositoryProvider : IQuoteRepository
             .QuerySingleOrDefaultAsync<Quote>(command);
     }
 
-    public async Task<Quote?> InsertQuoteAsync(Quote quote, CancellationToken cancellationToken = default)
+    public async Task<Quote> InsertQuoteAsync(
+        CreateQuoteRequest quote,
+        CancellationToken cancellationToken = default)
     {
-        await using var connection = new SqliteConnection(_connectionString);
+        ArgumentNullException.ThrowIfNull(quote);
+
+        await using var connection =
+            new SqliteConnection(_connectionString);
+
+        var parameters = new
+        {
+            Text = quote.Text!.Trim(),
+            Author = NormalizeOptional(quote.Author),
+            Source = NormalizeOptional(quote.Source)
+        };
 
         var command = new CommandDefinition(
             InsertQuoteSql,
-            quote,
+            parameters,
             cancellationToken: cancellationToken);
 
-        await connection.ExecuteAsync(command);
-        return quote;
+        return await connection.QuerySingleAsync<Quote>(command);
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim();
     }
 }

@@ -1,5 +1,7 @@
 using HappyQOTD.Data;
 using HappyQOTD.Quotes;
+using HappyQOTD.Security;
+using HappyQOTD.Secutiry;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,6 +12,14 @@ builder.Services.AddOpenApi();
 var quoteConnectionString = QuoteDatabase.Initialize();
 builder.Services.AddSingleton<IQuoteRepository>(
     _ => new SqliteRepositoryProvider(quoteConnectionString));
+
+builder.Services.Configure<QotdSecurityOptions>(
+    builder.Configuration.GetSection(
+        QotdSecurityOptions.SectionName));
+
+builder.Services.AddScoped<ApiKeyEndpointFilter>();
+
+builder.Services.AddProblemDetails();
 
 var app = builder.Build();
 
@@ -22,14 +32,28 @@ if (app.Environment.IsDevelopment())
 app.MapGet("/", () => "HappyQOTD");
 
 app.MapPost(
-    "/api/quotes",
-    async (IQuoteRepository quoteRepo, Quote quote) =>
-    {
-        var response = await quoteRepo.InsertQuoteAsync(quote);
-        return response is null
-            ? Results.NotFound()
-            : Results.Ok(quote);
-    });
+        "/api/quotes",
+        async (
+            CreateQuoteRequest request,
+            IQuoteRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = QuoteValidator.ValidateQuote(request);
+
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var created = await repository.InsertQuoteAsync(
+                request,
+                cancellationToken);
+
+            return Results.Created(
+                $"/api/quotes/{created.Id}",
+                created);
+        })
+    .AddEndpointFilter<ApiKeyEndpointFilter>();
 
 app.MapGet(
     "/api/quotes/random",
@@ -43,4 +67,6 @@ CancellationToken cancellationToken) =>
         : Results.Ok(quote);
 });
 
+app.UseExceptionHandler();
+app.UseStatusCodePages();
 app.Run();

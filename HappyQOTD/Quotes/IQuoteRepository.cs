@@ -5,7 +5,7 @@ public interface IQuoteRepository
     Task<Quote?> GetRandomQuoteAsync(
         CancellationToken cancellationToken = default);
 
-    Task<Quote?> InsertQuoteAsync(
-        Quote quote,
+    Task<Quote> InsertQuoteAsync(
+        CreateQuoteRequest quote,
         CancellationToken cancellationToken = default);
 }
