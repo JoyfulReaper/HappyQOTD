@@ -1,9 +1,8 @@
-﻿using HappyQOTD.Security;
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace HappyQOTD.Secutiry;
+namespace HappyQOTD.Security;
 
 public sealed class ApiKeyEndpointFilter(
     IOptions<QotdSecurityOptions> options)
