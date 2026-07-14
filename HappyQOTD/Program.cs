@@ -1,3 +1,4 @@
+using HappyQOTD.Data;
 using HappyQOTD.Quotes;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,7 +7,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
-builder.Services.AddSingleton<IQuoteProvider, InMemoryQuoteProvider>();
+var quoteConnectionString = QuoteDatabase.Initialize();
+builder.Services.AddSingleton<IQuoteProvider>(
+    _ => new SqliteQuoteProvider(quoteConnectionString));
 
 var app = builder.Build();
 
@@ -16,17 +19,14 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-
-app.MapGet("/", () =>
-{
-    return "HappyQOTD";
-});
+app.MapGet("/", () => "HappyQOTD");
 
 app.MapGet(
     "/api/quotes/random",
-(IQuoteProvider quoteProvider) =>
+async (IQuoteProvider quoteProvider,
+CancellationToken cancellationToken) =>
 {
-    var quote = quoteProvider.GetRandomQuote();
+    var quote = await quoteProvider.GetRandomQuoteAsync(cancellationToken);
 
     return quote is null
         ? Results.NotFound()

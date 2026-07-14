@@ -2,5 +2,6 @@
 
 public interface IQuoteProvider
 {
-    Quote? GetRandomQuote();
+    Task<Quote?> GetRandomQuoteAsync(
+        CancellationToken cancellationToken = default);
 }
