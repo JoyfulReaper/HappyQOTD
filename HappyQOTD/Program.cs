@@ -8,8 +8,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 
 var quoteConnectionString = QuoteDatabase.Initialize();
-builder.Services.AddSingleton<IQuoteProvider>(
-    _ => new SqliteQuoteProvider(quoteConnectionString));
+builder.Services.AddSingleton<IQuoteRepository>(
+    _ => new SqliteRepositoryProvider(quoteConnectionString));
 
 var app = builder.Build();
 
@@ -21,12 +21,22 @@ if (app.Environment.IsDevelopment())
 
 app.MapGet("/", () => "HappyQOTD");
 
+app.MapPost(
+    "/api/quotes",
+    async (IQuoteRepository quoteRepo, Quote quote) =>
+    {
+        var response = await quoteRepo.InsertQuoteAsync(quote);
+        return response is null
+            ? Results.NotFound()
+            : Results.Ok(quote);
+    });
+
 app.MapGet(
     "/api/quotes/random",
-async (IQuoteProvider quoteProvider,
+    async (IQuoteRepository quoteRepo,
 CancellationToken cancellationToken) =>
 {
-    var quote = await quoteProvider.GetRandomQuoteAsync(cancellationToken);
+    var quote = await quoteRepo.GetRandomQuoteAsync(cancellationToken);
 
     return quote is null
         ? Results.NotFound()

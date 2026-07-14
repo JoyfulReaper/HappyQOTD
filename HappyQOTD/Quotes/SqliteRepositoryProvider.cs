@@ -3,7 +3,7 @@ using Microsoft.Data.Sqlite;
 
 namespace HappyQOTD.Quotes;
 
-public sealed class SqliteQuoteProvider : IQuoteProvider
+public sealed class SqliteRepositoryProvider : IQuoteRepository
 {
     private const string RandomQuoteSql = """
         SELECT
@@ -17,14 +17,31 @@ public sealed class SqliteQuoteProvider : IQuoteProvider
         LIMIT 1;
         """;
 
+    private const string InsertQuoteSql = """
+        INSERT INTO Quotes
+        (
+            Text,
+            Author,
+            Source
+        )
+        VALUES
+        (
+            @Text,
+            @Author,
+            @Source
+        );
+        """;
+
     private readonly string _connectionString;
 
-    public SqliteQuoteProvider(string connectionString)
+    public SqliteRepositoryProvider(string connectionString)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
         _connectionString = connectionString;
     }
+
+
 
     public async Task<Quote?> GetRandomQuoteAsync(
         CancellationToken cancellationToken = default)
@@ -38,5 +55,18 @@ public sealed class SqliteQuoteProvider : IQuoteProvider
 
         return await connection
             .QuerySingleOrDefaultAsync<Quote>(command);
+    }
+
+    public async Task<Quote?> InsertQuoteAsync(Quote quote, CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+
+        var command = new CommandDefinition(
+            InsertQuoteSql,
+            quote,
+            cancellationToken: cancellationToken);
+
+        await connection.ExecuteAsync(command);
+        return quote;
     }
 }
