@@ -6,6 +6,7 @@ using JoyfulReaperLib.MissionControl;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
+using System.Net;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -37,10 +38,20 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy(
         QuoteReadRateLimitPolicy,
         httpContext =>
-            RateLimitPartition.GetFixedWindowLimiter(
+        {
+            var remoteAddress =
+                httpContext.Connection.RemoteIpAddress;
+
+            if (remoteAddress is not null &&
+                IPAddress.IsLoopback(remoteAddress))
+            {
+                return RateLimitPartition.GetNoLimiter(
+                    "loopback");
+            }
+
+            return RateLimitPartition.GetFixedWindowLimiter(
                 partitionKey:
-                    httpContext.Connection.RemoteIpAddress?.ToString()
-                    ?? "unknown",
+                    remoteAddress?.ToString() ?? "unknown",
                 factory: _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = 120,
@@ -49,7 +60,8 @@ builder.Services.AddRateLimiter(options =>
                     QueueProcessingOrder =
                         QueueProcessingOrder.OldestFirst,
                     AutoReplenishment = true
-                }));
+                });
+        });
 });
 
 builder.Services.Configure<HappyQOTDOptions>(

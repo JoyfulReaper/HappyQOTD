@@ -188,7 +188,7 @@ public class HappyQOTDWorker(
             {
                 logger.LogWarning(
                     ex,
-                    "Failed to publish telemetry for selector {Remote}.",
+                    "Failed to publish telemetry for QOTD client {Remote}.",
                     remote);
             }
         }
