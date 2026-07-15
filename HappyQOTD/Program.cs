@@ -3,8 +3,10 @@ using HappyQOTD.Data;
 using HappyQOTD.Quotes;
 using HappyQOTD.Security;
 using JoyfulReaperLib.MissionControl;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using System.Net;
 using System.Threading.RateLimiting;
@@ -85,6 +87,17 @@ builder.Services.AddHttpClient<QuoteApiClient>(
 var quoteConnectionString = QuoteDatabase.Initialize();
 builder.Services.AddSingleton<IQuoteRepository>(
     _ => new SqliteRepository(quoteConnectionString));
+builder.Services.AddHealthChecks()
+    .AddCheck(
+        "self",
+        () => HealthCheckResult.Healthy(),
+        tags: ["live"])
+    .Add(
+        new HealthCheckRegistration(
+            "sqlite",
+            _ => new SqliteHealthCheck(quoteConnectionString),
+            failureStatus: HealthStatus.Unhealthy,
+            tags: ["ready"]));
 
 builder.Services.Configure<QotdSecurityOptions>(
     builder.Configuration.GetSection(
@@ -135,6 +148,20 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapGet("/", () => "HappyQOTD");
+app.MapHealthChecks(
+    "/health/live",
+    new HealthCheckOptions
+    {
+        Predicate = registration =>
+            registration.Tags.Contains("live")
+    });
+app.MapHealthChecks(
+    "/health/ready",
+    new HealthCheckOptions
+    {
+        Predicate = registration =>
+            registration.Tags.Contains("ready")
+    });
 
 app.MapGet(
     "/api/quotes/today",
