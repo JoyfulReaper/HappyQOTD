@@ -1,0 +1,258 @@
+# HappyQOTD
+
+HappyQOTD combines the classic Quote of the Day protocol with a modern HTTP API.
+
+It selects one quote per UTC day, persists that selection in SQLite, and serves the same quote through both:
+
+- TCP port 17
+- An ASP.NET Core HTTP API
+
+## Live Services
+
+### Classic TCP QOTD
+
+```text
+qotd.kgivler.com:17
+```
+
+Connect using Netcat:
+
+```bash
+nc qotd.kgivler.com 17
+```
+
+Using Ncat on Windows:
+
+```powershell
+ncat qotd.kgivler.com 17
+```
+
+The server sends the current quote and closes the connection.
+
+### HTTP API
+
+Quote of the day:
+
+```text
+http://qotd-api.kgivler.com/api/quotes/today
+```
+
+```bash
+curl http://qotd-api.kgivler.com/api/quotes/today
+```
+
+Random quote:
+
+```text
+http://qotd-api.kgivler.com/api/quotes/random
+```
+
+```bash
+curl http://qotd-api.kgivler.com/api/quotes/random
+```
+
+Example response:
+
+```json
+{
+  "id": 4,
+  "text": "Readable code is a favor you leave for your future self.",
+  "author": null,
+  "source": "HappyQOTD original"
+}
+```
+
+## Features
+
+- Classic TCP Quote of the Day server on port 17
+- ASP.NET Core Minimal API
+- One persisted quote per UTC day
+- Random quote endpoint
+- SQLite storage
+- Dapper data access
+- API-key protected quote creation
+- Per-client HTTP rate limiting
+- Concurrent TCP connection limiting
+- Graceful shutdown and cancellation
+- Docker deployment
+- Mission Control telemetry integration
+
+## API
+
+### Get today's quote
+
+```http
+GET /api/quotes/today
+```
+
+Returns the persisted quote selected for the current UTC date.
+
+### Get a random quote
+
+```http
+GET /api/quotes/random
+```
+
+Returns a randomly selected active quote.
+
+### Add a quote
+
+```http
+POST /api/quotes
+X-HappyQOTD-Key: your-api-key
+Content-Type: application/json
+```
+
+```json
+{
+  "text": "Programs must be written for people to read.",
+  "author": "Harold Abelson",
+  "source": null
+}
+```
+
+Quote creation is protected by an administrator API key and a write rate limit.
+
+## How Daily Selection Works
+
+The first request for a UTC date selects a random active quote and stores the selection in SQLite.
+
+Subsequent requests for that date return the stored selection, including after application or container restarts.
+
+Both the TCP service and the HTTP endpoint therefore return the same quote for the day.
+
+## Configuration
+
+Example `appsettings.json`:
+
+```json
+{
+  "QotdSecurity": {
+    "AdminApiKey": ""
+  },
+  "QOTD": {
+    "ListenAddress": "127.0.0.1",
+    "Port": 17,
+    "ApiBaseUrl": "http://localhost:5269",
+    "MaxConcurrentConnections": 64,
+    "RequestTimeoutSeconds": 15
+  },
+  "MissionControl": {
+    "Enabled": false,
+    "BaseUrl": "http://localhost:5190",
+    "ApiKey": "",
+    "TimeoutMilliseconds": 1000
+  }
+}
+```
+
+Environment-variable equivalents use double underscores:
+
+```text
+QOTD__ListenAddress
+QOTD__Port
+QOTD__ApiBaseUrl
+QOTD__MaxConcurrentConnections
+QOTD__RequestTimeoutSeconds
+
+QotdSecurity__AdminApiKey
+
+MissionControl__Enabled
+MissionControl__BaseUrl
+MissionControl__ApiKey
+MissionControl__TimeoutMilliseconds
+```
+
+## Running Locally
+
+Requirements:
+
+- .NET 10 SDK
+- Local JoyfulReaperLib NuGet packages available through `NuGet.config`
+
+Restore and run:
+
+```bash
+dotnet restore
+dotnet run --project HappyQOTD/HappyQOTD.csproj
+```
+
+Test the HTTP API:
+
+```bash
+curl http://localhost:5269/api/quotes/today
+```
+
+Test the TCP server:
+
+```bash
+nc 127.0.0.1 17
+```
+
+Binding directly to port 17 may require elevated privileges on Linux. For development, the configured port can be changed to a non-privileged port such as 1717.
+
+## Docker
+
+Build the image:
+
+```bash
+docker build -t happyqotd .
+```
+
+The production container requires:
+
+- A writable directory for the SQLite database
+- `NET_BIND_SERVICE` when binding directly to TCP port 17
+- An HTTP listener reachable by the internal `QuoteApiClient`
+
+Example Compose security configuration:
+
+```yaml
+cap_drop:
+  - ALL
+
+cap_add:
+  - NET_BIND_SERVICE
+
+security_opt:
+  - no-new-privileges:true
+```
+
+## Architecture
+
+```text
+TCP client
+    |
+    v
+HappyQOTDWorker
+    |
+    v
+GET /api/quotes/today
+    |
+    v
+SqliteRepository
+    |
+    v
+SQLite
+```
+
+The HTTP API also exposes the same quote data directly to web clients and integrations.
+
+## Technology
+
+- .NET 10
+- ASP.NET Core Minimal APIs
+- `BackgroundService`
+- `TcpListener`
+- SQLite
+- Dapper
+- Docker
+- JoyfulReaperLib
+- JoyfulReaperLib.MissionControl
+- JoyfulReaperLib.Sqlite
+
+## License
+
+HappyQOTD is licensed under the MIT License.
+
+Copyright © 2026 Kyle Givler
