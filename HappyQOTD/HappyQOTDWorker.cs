@@ -1,4 +1,5 @@
-﻿using HappyQOTD.Quotes;
+﻿using HappyQOTD.Events;
+using HappyQOTD.Quotes;
 using JoyfulReaperLib.JRNet;
 using JoyfulReaperLib.MissionControl;
 using Microsoft.Extensions.Options;
@@ -104,6 +105,7 @@ public class HappyQOTDWorker(
         var stopwatch = Stopwatch.StartNew();
         var correlationId = Guid.NewGuid().ToString("N");
 
+        bool responseCompleted = false;
         using (client)
         {
             client.NoDelay = true;
@@ -125,6 +127,7 @@ public class HappyQOTDWorker(
                 await using NetworkStream stream = client.GetStream();
                 await stream.WriteAsync(responseBytes, stoppingToken);
                 await stream.FlushAsync(stoppingToken);
+                responseCompleted = true;
             }
             catch (OperationCanceledException)
             {
@@ -167,6 +170,27 @@ public class HappyQOTDWorker(
             }
 
             stopwatch.Stop();
+
+            try
+            {
+                await missionControlClient.TryPublishAsync(
+                    eventType: "happyqotd.qotd.served",
+                    payload: new QOTDServedEvent(
+                        remote?.ToString() ?? "unknown",
+                        stopwatch.ElapsedMilliseconds,
+                        responseCompleted
+                        ),
+                    occurredAt,
+                    correlationId,
+                    stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "Failed to publish telemetry for selector {Remote}.",
+                    remote);
+            }
         }
     }
 
