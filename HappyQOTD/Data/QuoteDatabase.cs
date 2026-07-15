@@ -17,6 +17,16 @@ public static class QuoteDatabase
                 CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS DailyQuoteSelections
+            (
+                SelectionDate TEXT PRIMARY KEY,
+                QuoteId       INTEGER NOT NULL,
+                SelectedAt    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (QuoteId)
+                    REFERENCES Quotes(Id)
+            );
+
             INSERT OR IGNORE INTO Quotes
                 (Id, Text, Author, Source)
             VALUES

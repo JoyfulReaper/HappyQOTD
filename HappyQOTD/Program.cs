@@ -51,7 +51,7 @@ builder.Services.AddRateLimiter(options =>
 
 var quoteConnectionString = QuoteDatabase.Initialize();
 builder.Services.AddSingleton<IQuoteRepository>(
-    _ => new SqliteRepositoryProvider(quoteConnectionString));
+    _ => new SqliteRepository(quoteConnectionString));
 
 builder.Services.Configure<QotdSecurityOptions>(
     builder.Configuration.GetSection(
@@ -97,6 +97,23 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapGet("/", () => "HappyQOTD");
+
+app.MapGet(
+    "/api/quotes/today",
+    async (
+        IQuoteRepository quoteRepository,
+        CancellationToken cancellationToken) =>
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var quote = await quoteRepository.GetQuoteOfTheDayAsync(
+            today,
+            cancellationToken);
+
+        return quote is null
+            ? Results.NotFound()
+            : Results.Ok(quote);
+    }).RequireRateLimiting(QuoteReadRateLimitPolicy);
 
 app.MapPost(
         "/api/quotes",

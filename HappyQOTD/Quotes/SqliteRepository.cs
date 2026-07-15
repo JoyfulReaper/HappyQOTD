@@ -3,7 +3,7 @@ using Microsoft.Data.Sqlite;
 
 namespace HappyQOTD.Quotes;
 
-public sealed class SqliteRepositoryProvider : IQuoteRepository
+public sealed class SqliteRepository : IQuoteRepository
 {
     private const string RandomQuoteSql = """
         SELECT
@@ -37,16 +37,70 @@ public sealed class SqliteRepositoryProvider : IQuoteRepository
             Source;
         """;
 
+    private const string CreateDailySelectionSql = """
+        INSERT OR IGNORE INTO DailyQuoteSelections
+        (
+            SelectionDate,
+            QuoteId
+        )
+        SELECT
+            @SelectionDate,
+            Id
+        FROM Quotes
+        WHERE IsActive = 1
+        ORDER BY RANDOM()
+        LIMIT 1;
+        """;
+
+    private const string GetDailyQuoteSql = """
+        SELECT
+            quote.Id,
+            quote.Text,
+            quote.Author,
+            quote.Source
+        FROM DailyQuoteSelections AS selection
+        INNER JOIN Quotes AS quote
+            ON quote.Id = selection.QuoteId
+        WHERE selection.SelectionDate = @SelectionDate
+        LIMIT 1;
+        """;
+
     private readonly string _connectionString;
 
-    public SqliteRepositoryProvider(string connectionString)
+    public SqliteRepository(string connectionString)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
         _connectionString = connectionString;
     }
 
+    public async Task<Quote?> GetQuoteOfTheDayAsync(
+        DateOnly date,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection =
+            new SqliteConnection(_connectionString);
 
+        var parameters = new
+        {
+            SelectionDate = date.ToString("yyyy-MM-dd")
+        };
+
+        var createCommand = new CommandDefinition(
+            CreateDailySelectionSql,
+            parameters,
+            cancellationToken: cancellationToken);
+
+        await connection.ExecuteAsync(createCommand);
+
+        var getCommand = new CommandDefinition(
+            GetDailyQuoteSql,
+            parameters,
+            cancellationToken: cancellationToken);
+
+        return await connection
+            .QuerySingleOrDefaultAsync<Quote>(getCommand);
+    }
 
     public async Task<Quote?> GetRandomQuoteAsync(
         CancellationToken cancellationToken = default)

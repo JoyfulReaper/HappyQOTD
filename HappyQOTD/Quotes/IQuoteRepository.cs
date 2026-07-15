@@ -8,4 +8,8 @@ public interface IQuoteRepository
     Task<Quote> InsertQuoteAsync(
         CreateQuoteRequest quote,
         CancellationToken cancellationToken = default);
+
+    Task<Quote?> GetQuoteOfTheDayAsync(
+        DateOnly date,
+        CancellationToken cancellationToken = default);
 }
