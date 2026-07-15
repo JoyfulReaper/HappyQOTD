@@ -1,5 +1,6 @@
 using HappyQOTD;
 using HappyQOTD.Data;
+using HappyQOTD.Events;
 using HappyQOTD.Quotes;
 using HappyQOTD.Security;
 using JoyfulReaperLib.MissionControl;
@@ -8,6 +9,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using System.Diagnostics;
 using System.Net;
 using System.Threading.RateLimiting;
 
@@ -167,13 +169,40 @@ app.MapGet(
     "/api/quotes/today",
     async (
         IQuoteRepository quoteRepository,
+        IMissionControlClient missionControlClient,
+        ILogger<Program> logger,
         CancellationToken cancellationToken) =>
     {
+        var occurredAt = DateTimeOffset.UtcNow;
+        var stopwatch = Stopwatch.StartNew();
+        var correlationId = Guid.NewGuid().ToString("N");
+
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         var quote = await quoteRepository.GetQuoteOfTheDayAsync(
             today,
             cancellationToken);
+
+        stopwatch.Stop();
+        try
+        {
+            await missionControlClient.TryPublishAsync<QOTDApiServedEvent>(
+                eventType: "happyqotd.api.quote.added",
+                payload: new QOTDApiServedEvent(
+                    DurationMilliseconds: stopwatch.ElapsedMilliseconds,
+                    Succeeded: quote is not null
+                ),
+                occurredAt,
+                correlationId,
+                cancellationToken
+            );
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Failed to publish telemetry for QOTD API random quote client.");
+        }
 
         return quote is null
             ? Results.NotFound()
@@ -185,8 +214,14 @@ app.MapPost(
         async (
             CreateQuoteRequest request,
             IQuoteRepository repository,
+            IMissionControlClient missionControlClient,
+            ILogger<Program> logger,
             CancellationToken cancellationToken) =>
         {
+            var occurredAt = DateTimeOffset.UtcNow;
+            var stopwatch = Stopwatch.StartNew();
+            var correlationId = Guid.NewGuid().ToString("N");
+
             var errors = QuoteValidator.ValidateQuote(request);
 
             if (errors.Count > 0)
@@ -198,6 +233,27 @@ app.MapPost(
                 request,
                 cancellationToken);
 
+            stopwatch.Stop();
+            try
+            {
+                await missionControlClient.TryPublishAsync<QuoteAddedEvent>(
+                    eventType: "happyqotd.api.quote.added",
+                    payload: new QuoteAddedEvent(
+                        DurationMilliseconds: stopwatch.ElapsedMilliseconds,
+                        Succeeded: true
+                    ),
+                    occurredAt,
+                    correlationId,
+                    cancellationToken
+                );
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "Failed to publish telemetry for QOTD API random quote client.");
+            }
+
             return Results.Created(
                 $"/api/quotes/{created.Id}",
                 created);
@@ -208,9 +264,37 @@ app.MapPost(
 app.MapGet(
     "/api/quotes/random",
     async (IQuoteRepository quoteRepo,
+        IMissionControlClient missionControlClient,
+        ILogger<Program> logger,
 CancellationToken cancellationToken) =>
 {
+    var occurredAt = DateTimeOffset.UtcNow;
+    var stopwatch = Stopwatch.StartNew();
+    var correlationId = Guid.NewGuid().ToString("N");
+
     var quote = await quoteRepo.GetRandomQuoteAsync(cancellationToken);
+
+    stopwatch.Stop();
+    try
+    {
+        await missionControlClient.TryPublishAsync<RandomQuoteServedEvent>(
+            eventType: "happyqotd.api.randomquote.served",
+            payload: new RandomQuoteServedEvent(
+                DurationMilliseconds: stopwatch.ElapsedMilliseconds,
+                Succeeded: quote is not null
+            ),
+            occurredAt,
+            correlationId,
+            cancellationToken
+        );
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(
+            ex,
+            "Failed to publish telemetry for QOTD API random quote client.");
+    }
+
 
     return quote is null
         ? Results.NotFound()
