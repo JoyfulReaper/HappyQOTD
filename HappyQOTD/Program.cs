@@ -1,6 +1,8 @@
+using HappyQOTD;
 using HappyQOTD.Data;
 using HappyQOTD.Quotes;
 using HappyQOTD.Security;
+using JoyfulReaperLib.MissionControl;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
@@ -57,7 +59,12 @@ builder.Services.Configure<QotdSecurityOptions>(
     builder.Configuration.GetSection(
         QotdSecurityOptions.SectionName));
 
+builder.Services.AddMissionControlClient(
+    builder.Configuration.GetSection(
+        MissionControlClientOptions.SectionName));
+
 builder.Services.AddScoped<ApiKeyEndpointFilter>();
+builder.Services.AddHostedService<HappyQOTDWorker>();
 
 builder.Services.AddProblemDetails();
 
