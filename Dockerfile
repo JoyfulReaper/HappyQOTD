@@ -1,4 +1,9 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+
+COPY ["NuGet.config", "./"]
+COPY ["local-nuget/", "local-nuget/"]
+COPY ["HappyQOTD/HappyQOTD.csproj", "HappyQOTD/"]
+
 WORKDIR /src
 
 COPY ["HappyQOTD/HappyQOTD.csproj", "HappyQOTD/"]
