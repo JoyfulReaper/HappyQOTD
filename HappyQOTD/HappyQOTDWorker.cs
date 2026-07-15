@@ -1,4 +1,5 @@
-﻿using JoyfulReaperLib.JRNet;
+﻿using HappyQOTD.Quotes;
+using JoyfulReaperLib.JRNet;
 using JoyfulReaperLib.MissionControl;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
@@ -12,6 +13,7 @@ namespace HappyQOTD;
 public class HappyQOTDWorker(
     ILogger<HappyQOTDWorker> logger,
     IOptions<HappyQOTDOptions> options,
+    QuoteApiClient quoteApiClient,
     IMissionControlClient missionControlClient) : BackgroundService
 {
     private TcpListener? _listener;
@@ -109,7 +111,16 @@ public class HappyQOTDWorker(
 
             try
             {
-                byte[] responseBytes = Encoding.UTF8.GetBytes("Hello! Connection successful.\r\n");
+                Quote? quote =
+                    await quoteApiClient.GetQuoteOfTheDayAsync(
+                        stoppingToken);
+
+                string response = quote is null
+                    ? "No quote is available today.\r\n"
+                    : FormatQuote(quote);
+
+                byte[] responseBytes =
+                    Encoding.UTF8.GetBytes(response);
 
                 await using NetworkStream stream = client.GetStream();
                 await stream.WriteAsync(responseBytes, stoppingToken);
@@ -157,6 +168,22 @@ public class HappyQOTDWorker(
 
             stopwatch.Stop();
         }
+    }
+
+    private static string FormatQuote(Quote quote)
+    {
+        var attribution = quote.Author;
+
+        if (!string.IsNullOrWhiteSpace(quote.Source))
+        {
+            attribution = string.IsNullOrWhiteSpace(attribution)
+                ? quote.Source
+                : $"{attribution}, {quote.Source}";
+        }
+
+        return string.IsNullOrWhiteSpace(attribution)
+            ? $"{quote.Text}\r\n"
+            : $"{quote.Text}\r\n-- {attribution}\r\n";
     }
 
     public override Task StopAsync(CancellationToken cancellationToken)

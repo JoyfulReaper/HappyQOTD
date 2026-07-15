@@ -5,6 +5,7 @@ using HappyQOTD.Security;
 using JoyfulReaperLib.MissionControl;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -50,6 +51,24 @@ builder.Services.AddRateLimiter(options =>
                     AutoReplenishment = true
                 }));
 });
+
+builder.Services.Configure<HappyQOTDOptions>(
+    builder.Configuration.GetSection(
+        HappyQOTDOptions.SectionName));
+
+builder.Services.AddHttpClient<QuoteApiClient>(
+    (serviceProvider, client) =>
+    {
+        var qotdOptions = serviceProvider
+            .GetRequiredService<IOptions<HappyQOTDOptions>>()
+            .Value;
+
+        client.BaseAddress = new Uri(
+            qotdOptions.ApiBaseUrl);
+
+        client.Timeout = TimeSpan.FromSeconds(
+            qotdOptions.RequestTimeoutSeconds);
+    });
 
 var quoteConnectionString = QuoteDatabase.Initialize();
 builder.Services.AddSingleton<IQuoteRepository>(
