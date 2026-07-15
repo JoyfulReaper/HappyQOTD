@@ -21,6 +21,21 @@ builder.Services.AddOpenApi();
 
 const string QuoteWriteRateLimitPolicy = "quote-write";
 const string QuoteReadRateLimitPolicy = "quote-read";
+const string BrowserClientCorsPolicy = "browser-client";
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(
+        BrowserClientCorsPolicy,
+        policy =>
+        {
+            policy.WithOrigins(
+                "https://kgivler.com",
+                "https://www.kgivler.com")
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        });
+});
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -141,6 +156,7 @@ app.Use((context, next) =>
 });
 
 app.UseForwardedHeaders(forwardedOptions);
+app.UseCors(BrowserClientCorsPolicy);
 app.UseRateLimiter();
 
 // Configure the HTTP request pipeline.
