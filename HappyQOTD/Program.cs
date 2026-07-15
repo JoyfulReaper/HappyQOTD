@@ -187,7 +187,7 @@ app.MapGet(
         try
         {
             await missionControlClient.TryPublishAsync<QOTDApiServedEvent>(
-                eventType: "happyqotd.api.quote.added",
+                eventType: "happyqotd.api.qotd.served",
                 payload: new QOTDApiServedEvent(
                     DurationMilliseconds: stopwatch.ElapsedMilliseconds,
                     Succeeded: quote is not null
