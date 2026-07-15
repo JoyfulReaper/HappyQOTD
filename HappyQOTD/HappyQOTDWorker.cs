@@ -111,6 +111,19 @@ public class HappyQOTDWorker(
             client.NoDelay = true;
             EndPoint? remote = client.Client.RemoteEndPoint;
 
+            var remoteAddress = (remote as IPEndPoint)?
+                .Address
+                .MapToIPv4()
+                .ToString();
+
+            bool isIgnoredTelemetrySource =
+                !string.IsNullOrWhiteSpace(
+                    options.Value.TelemetryIgnoredRemoteAddress) &&
+                string.Equals(
+                    remoteAddress,
+                    options.Value.TelemetryIgnoredRemoteAddress,
+                    StringComparison.OrdinalIgnoreCase);
+
             try
             {
                 Quote? quote =
@@ -173,6 +186,11 @@ public class HappyQOTDWorker(
 
             try
             {
+                if (isIgnoredTelemetrySource)
+                {
+                    return;
+                }
+
                 await missionControlClient.TryPublishAsync(
                     eventType: "happyqotd.qotd.served",
                     payload: new QOTDServedEvent(

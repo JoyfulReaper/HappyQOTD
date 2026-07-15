@@ -5,7 +5,11 @@
 
 **/bin
 **/obj
-**/Data
+
+
+**/*.db
+**/*.db-shm
+**/*.db-wal
 
 *.user
 *.suo
