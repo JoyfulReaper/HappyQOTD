@@ -117,12 +117,7 @@ public class HappyQOTDWorker(
                 .ToString();
 
             bool isIgnoredTelemetrySource =
-                !string.IsNullOrWhiteSpace(
-                    options.Value.TelemetryIgnoredRemoteAddress) &&
-                string.Equals(
-                    remoteAddress,
-                    options.Value.TelemetryIgnoredRemoteAddress,
-                    StringComparison.OrdinalIgnoreCase);
+                IsIgnoredTelemetrySource(remote);
 
             try
             {
@@ -218,7 +213,7 @@ public class HappyQOTDWorker(
     }
 
     private bool IsIgnoredTelemetrySource(
-    EndPoint? remote)
+        EndPoint? remote)
     {
         IPAddress? remoteAddress =
             (remote as IPEndPoint)?
