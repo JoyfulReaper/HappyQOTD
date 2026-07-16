@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Options;
 using System.Diagnostics;
 using System.Net;
 using System.Threading.RateLimiting;
@@ -86,20 +85,6 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.Configure<HappyQOTDOptions>(
     builder.Configuration.GetSection(
         HappyQOTDOptions.SectionName));
-
-builder.Services.AddHttpClient<QuoteApiClient>(
-    (serviceProvider, client) =>
-    {
-        var qotdOptions = serviceProvider
-            .GetRequiredService<IOptions<HappyQOTDOptions>>()
-            .Value;
-
-        client.BaseAddress = new Uri(
-            qotdOptions.ApiBaseUrl);
-
-        client.Timeout = TimeSpan.FromSeconds(
-            qotdOptions.RequestTimeoutSeconds);
-    });
 
 var quoteConnectionString = QuoteDatabase.Initialize();
 builder.Services.AddSingleton<IQuoteRepository>(

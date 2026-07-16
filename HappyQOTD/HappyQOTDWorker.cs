@@ -14,7 +14,7 @@ namespace HappyQOTD;
 public class HappyQOTDWorker(
     ILogger<HappyQOTDWorker> logger,
     IOptions<HappyQOTDOptions> options,
-    QuoteApiClient quoteApiClient,
+    IQuoteRepository quoteRepository,
     IMissionControlClient missionControlClient) : BackgroundService
 {
     private TcpListener? _listener;
@@ -111,10 +111,23 @@ public class HappyQOTDWorker(
             client.NoDelay = true;
             EndPoint? remote = client.Client.RemoteEndPoint;
 
+            var remoteAddress = (remote as IPEndPoint)?
+                .Address
+                .MapToIPv4()
+                .ToString();
+
+            bool isIgnoredTelemetrySource =
+                IsIgnoredTelemetrySource(remote);
+
             try
             {
+                DateOnly today =
+                    DateOnly.FromDateTime(
+                        DateTime.UtcNow);
+
                 Quote? quote =
-                    await quoteApiClient.GetQuoteOfTheDayAsync(
+                    await quoteRepository.GetQuoteOfTheDayAsync(
+                        today,
                         stoppingToken);
 
                 string response = quote is null
@@ -173,6 +186,11 @@ public class HappyQOTDWorker(
 
             try
             {
+                if (isIgnoredTelemetrySource)
+                {
+                    return;
+                }
+
                 await missionControlClient.TryPublishAsync(
                     eventType: "happyqotd.qotd.served",
                     payload: new QOTDServedEvent(
@@ -192,6 +210,29 @@ public class HappyQOTDWorker(
                     remote);
             }
         }
+    }
+
+    private bool IsIgnoredTelemetrySource(
+        EndPoint? remote)
+    {
+        IPAddress? remoteAddress =
+            (remote as IPEndPoint)?
+                .Address
+                .MapToIPv4();
+
+        if (remoteAddress is null)
+        {
+            return false;
+        }
+
+        return options.Value
+            .TelemetryIgnoredRemoteAddresses
+            .Any(configuredAddress =>
+                IPAddress.TryParse(
+                    configuredAddress,
+                    out IPAddress? ignoredAddress) &&
+                remoteAddress.Equals(
+                    ignoredAddress.MapToIPv4()));
     }
 
     private static string FormatQuote(Quote quote)
