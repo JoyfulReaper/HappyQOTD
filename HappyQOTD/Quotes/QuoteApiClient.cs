@@ -1,5 +1,6 @@
-﻿using System.Net;
-using System.Net.Http.Json;
+﻿// Currently unused
+
+using System.Net;
 
 namespace HappyQOTD.Quotes;
 

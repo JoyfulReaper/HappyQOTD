@@ -14,7 +14,7 @@ namespace HappyQOTD;
 public class HappyQOTDWorker(
     ILogger<HappyQOTDWorker> logger,
     IOptions<HappyQOTDOptions> options,
-    QuoteApiClient quoteApiClient,
+    IQuoteRepository quoteRepository,
     IMissionControlClient missionControlClient) : BackgroundService
 {
     private TcpListener? _listener;
@@ -126,8 +126,13 @@ public class HappyQOTDWorker(
 
             try
             {
+                DateOnly today =
+                    DateOnly.FromDateTime(
+                        DateTime.UtcNow);
+
                 Quote? quote =
-                    await quoteApiClient.GetQuoteOfTheDayAsync(
+                    await quoteRepository.GetQuoteOfTheDayAsync(
+                        today,
                         stoppingToken);
 
                 string response = quote is null
