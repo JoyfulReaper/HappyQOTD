@@ -217,6 +217,29 @@ public class HappyQOTDWorker(
         }
     }
 
+    private bool IsIgnoredTelemetrySource(
+    EndPoint? remote)
+    {
+        IPAddress? remoteAddress =
+            (remote as IPEndPoint)?
+                .Address
+                .MapToIPv4();
+
+        if (remoteAddress is null)
+        {
+            return false;
+        }
+
+        return options.Value
+            .TelemetryIgnoredRemoteAddresses
+            .Any(configuredAddress =>
+                IPAddress.TryParse(
+                    configuredAddress,
+                    out IPAddress? ignoredAddress) &&
+                remoteAddress.Equals(
+                    ignoredAddress.MapToIPv4()));
+    }
+
     private static string FormatQuote(Quote quote)
     {
         var attribution = quote.Author;
