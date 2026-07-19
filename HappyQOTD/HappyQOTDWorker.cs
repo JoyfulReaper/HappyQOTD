@@ -32,6 +32,33 @@ public class HappyQOTDWorker(
         _listener = new TcpListener(ipAddress, options.Value.Port);
         _listener.Start();
 
+        var occurredAt = DateTimeOffset.UtcNow;
+
+        try
+        {
+            bool published = await missionControlClient.TryPublishAsync(
+                eventType: QOTDServiceStartedEvent.EventName,
+                payload: new QOTDServiceStartedEvent(
+                    $"{ipAddress}:{options.Value.Port}"),
+                payloadTypeInfo: QOTDJsonContext.Default.QOTDServiceStartedEvent,
+                occurredAt: occurredAt,
+                correlationId: null,
+                cancellationToken: stoppingToken);
+
+            if (!published)
+            {
+                logger.LogWarning(
+                    "Mission Control did not accept {EventType}",
+                    QOTDServiceStartedEvent.EventName);
+            }
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Failed to publish Mission Control event for QOTD Service Started");
+        }
+
         logger.LogInformation(
             "HappyQOTD Server Listening on {address}:{port}",
             ipAddress,
