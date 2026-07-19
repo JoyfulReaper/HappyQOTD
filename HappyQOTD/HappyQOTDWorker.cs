@@ -198,6 +198,7 @@ public class HappyQOTDWorker(
                         stopwatch.ElapsedMilliseconds,
                         responseCompleted
                         ),
+                    payloadTypeInfo: QOTDJsonContext.Default.QOTDServedEvent,
                     occurredAt,
                     correlationId,
                     stoppingToken);

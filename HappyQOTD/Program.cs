@@ -193,6 +193,7 @@ app.MapGet(
                     DurationMilliseconds: stopwatch.ElapsedMilliseconds,
                     Succeeded: quote is not null
                 ),
+                payloadTypeInfo: QOTDJsonContext.Default.QOTDApiServedEvent,
                 occurredAt,
                 correlationId,
                 cancellationToken
@@ -243,6 +244,7 @@ app.MapPost(
                         DurationMilliseconds: stopwatch.ElapsedMilliseconds,
                         Succeeded: true
                     ),
+                    payloadTypeInfo: QOTDJsonContext.Default.QuoteAddedEvent,
                     occurredAt,
                     correlationId,
                     cancellationToken
@@ -284,6 +286,7 @@ CancellationToken cancellationToken) =>
                 DurationMilliseconds: stopwatch.ElapsedMilliseconds,
                 Succeeded: quote is not null
             ),
+            payloadTypeInfo: QOTDJsonContext.Default.RandomQuoteServedEvent,
             occurredAt,
             correlationId,
             cancellationToken

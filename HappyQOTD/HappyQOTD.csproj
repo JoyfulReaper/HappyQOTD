@@ -5,15 +5,24 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>f8cc439e-72da-462e-8d61-8e66b3a88ba3</UserSecretsId>
+	  <!-- Enable Native AOT Compilation -->
+	  <PublishAot>true</PublishAot>
+
+	  <!-- Strip out all unused framework code ruthlessly -->
+	  <TrimMode>full</TrimMode>
+
+	  <!-- Optimizes for size, cutting out unneeded native metadata -->
+	  <OptimizationPreference>Size</OptimizationPreference>
+	  <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="JoyfulReaperLib" Version="0.0.11" />
-    <PackageReference Include="JoyfulReaperLib.MissionControl" Version="0.0.1" />
+    <PackageReference Include="JoyfulReaperLib.MissionControl" Version="0.0.3" />
     <PackageReference Include="JoyfulReaperLib.Sqlite" Version="0.0.9" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
-    <PackageReference Include="Microsoft.OpenApi" Version="2.10.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
   </ItemGroup>
 
 </Project>

@@ -20,7 +20,7 @@ public sealed class QuoteApiClient(HttpClient httpClient)
 
         response.EnsureSuccessStatusCode();
 
-        return await response.Content.ReadFromJsonAsync<Quote>(cancellationToken)
+        return await response.Content.ReadFromJsonAsync<Quote>(QuoteJsonContext.Default.Quote, cancellationToken)
             ?? throw new InvalidDataException("The quote API returned an empty response.");
     }
 }
