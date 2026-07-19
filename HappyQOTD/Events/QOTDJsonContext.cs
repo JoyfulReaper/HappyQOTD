@@ -1,9 +1,13 @@
-﻿using System.Text.Json;
+﻿using HappyQOTD.Quotes;
 using System.Text.Json.Serialization;
 
 namespace HappyQOTD.Events;
 
-[JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
+// HTTP API request and response types
+[JsonSerializable(typeof(CreateQuoteRequest))]
+[JsonSerializable(typeof(Quote))]
+
+// Mission Control event types
 [JsonSerializable(typeof(QOTDApiServedEvent))]
 [JsonSerializable(typeof(QOTDServedEvent))]
 [JsonSerializable(typeof(QuoteAddedEvent))]
