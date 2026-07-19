@@ -18,6 +18,13 @@ var builder = WebApplication.CreateBuilder(args);
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.TypeInfoResolverChain.Insert(
+        0,
+        QOTDJsonContext.Default);
+});
+
 const string QuoteWriteRateLimitPolicy = "quote-write";
 const string QuoteReadRateLimitPolicy = "quote-read";
 const string BrowserClientCorsPolicy = "browser-client";
