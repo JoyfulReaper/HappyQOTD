@@ -69,7 +69,7 @@ Example response:
 - One persisted quote per UTC day
 - Random quote endpoint
 - SQLite storage
-- Dapper data access
+- Direct `Microsoft.Data.Sqlite` data access
 - API-key protected quote creation
 - Per-client HTTP rate limiting
 - Concurrent TCP connection limiting
@@ -245,7 +245,7 @@ The HTTP API also exposes the same quote data directly to web clients and integr
 - `BackgroundService`
 - `TcpListener`
 - SQLite
-- Dapper
+- Microsoft.Data.Sqlite
 - Docker
 - JoyfulReaperLib
 - JoyfulReaperLib.MissionControl
