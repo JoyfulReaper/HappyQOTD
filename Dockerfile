@@ -1,26 +1,28 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
+WORKDIR /src
 
-COPY ["NuGet.config", "./"]
-COPY ["local-nuget/", "local-nuget/"]
-COPY ["HappyQOTD/HappyQOTD.csproj", "HappyQOTD/"]
+COPY . .
 
 WORKDIR /src
 
-COPY ["HappyQOTD/HappyQOTD.csproj", "HappyQOTD/"]
-RUN dotnet restore "HappyQOTD/HappyQOTD.csproj"
+RUN apk add --no-cache \
+    clang \
+    build-base \
+    zlib-dev
 
-COPY . .
-WORKDIR "/src/HappyQOTD"
+RUN dotnet restore HappyQOTD.slnx
 
-RUN dotnet publish \
-    "HappyQOTD.csproj" \
+RUN dotnet publish HappyQOTD/HappyQOTD.csproj \
     --configuration Release \
-    --output /app/publish \
-    /p:UseAppHost=false
+    --runtime linux-musl-x64 \
+    --self-contained true \
+    /p:PublishAot=true \
+    --no-restore \
+    --output /app/publish
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+FROM mcr.microsoft.com/dotnet/runtime-deps:10.0-alpine AS final
 WORKDIR /app
 
 COPY --from=build /app/publish .
 
-ENTRYPOINT ["dotnet", "HappyQOTD.dll"]
+ENTRYPOINT ["./HappyQOTD"]
