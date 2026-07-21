@@ -2,4 +2,8 @@
 
 public sealed record QOTDApiServedEvent(
     long DurationMilliseconds,
-    bool Succeeded);
+    string Remote,
+    bool Succeeded)
+{
+    public const string EventType = "happyqotd.api.qotd.served";
+}

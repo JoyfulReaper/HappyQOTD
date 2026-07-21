@@ -9,7 +9,20 @@ public interface IQuoteRepository
         CreateQuoteRequest quote,
         CancellationToken cancellationToken = default);
 
+    Task<Quote?> GetQuoteAsync(
+            long id,
+            CancellationToken cancellationToken = default);
+
     Task<Quote?> GetQuoteOfTheDayAsync(
         DateOnly date,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> DeleteQuoteAsync(
+        int id,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> SetQuoteOfTheDayAsync(
+        DateOnly date,
+        long? quoteId = null,
         CancellationToken cancellationToken = default);
 }

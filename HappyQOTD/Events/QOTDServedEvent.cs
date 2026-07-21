@@ -1,6 +1,11 @@
-﻿namespace HappyQOTD.Events;
+﻿using System.Diagnostics;
+
+namespace HappyQOTD.Events;
 
 public sealed record QOTDServedEvent(
     string Remote,
     long DurationMilliseconds,
-    bool Succeeded);
+    bool Succeeded)
+{
+    public const string EventName = "happyqotd.qotd.served";
+}

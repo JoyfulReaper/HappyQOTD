@@ -219,7 +219,7 @@ public class HappyQOTDWorker(
                 }
 
                 await missionControlClient.TryPublishAsync(
-                    eventType: "happyqotd.qotd.served",
+                    eventType: QOTDServedEvent.EventName,
                     payload: new QOTDServedEvent(
                         remote?.ToString() ?? "unknown",
                         stopwatch.ElapsedMilliseconds,
