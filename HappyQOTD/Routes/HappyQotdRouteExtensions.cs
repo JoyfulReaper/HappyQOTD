@@ -292,6 +292,7 @@ public static class HappyQotdRouteExtensions
         IQuoteRepository quoteRepository,
         IMissionControlClient missionControlClient,
         ILogger<Program> logger,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var occurredAt = DateTimeOffset.UtcNow;
@@ -301,13 +302,14 @@ public static class HappyQotdRouteExtensions
         var quote = await quoteRepository.GetRandomQuoteAsync(cancellationToken);
 
         stopwatch.Stop();
-
+        var remote = GetRemoteIpAddress(httpContext);
         await TryPublishTelemetryAsync(
             missionControlClient,
             logger,
             eventType: "happyqotd.api.randomquote.served",
             payload: new RandomQuoteServedEvent(
                 DurationMilliseconds: stopwatch.ElapsedMilliseconds,
+                Remote: remote,
                 Succeeded: quote is not null),
             payloadTypeInfo: QOTDJsonContext.Default.RandomQuoteServedEvent,
             occurredAt,
