@@ -1,4 +1,4 @@
-﻿using Dapper;
+using System.Reflection.Metadata;
 using Microsoft.Data.Sqlite;
 
 namespace HappyQOTD.Quotes;
@@ -65,6 +65,35 @@ public sealed class SqliteRepository : IQuoteRepository
         LIMIT 1;
         """;
 
+    private const string SetSpecificDailyQuoteSql = """
+        INSERT INTO DailyQuoteSelections (SelectionDate, QuoteId)
+        SELECT @SelectionDate, Id
+        FROM Quotes
+        WHERE Id = @QuoteId AND IsActive = 1
+        ON CONFLICT(SelectionDate) DO UPDATE SET QuoteId = excluded.QuoteId;
+        """;
+
+    private const string SetRandomDailyQuoteSql = """
+        INSERT INTO DailyQuoteSelections (SelectionDate, QuoteId)
+        SELECT @SelectionDate, Id
+        FROM Quotes
+        WHERE IsActive = 1
+        ORDER BY RANDOM()
+        LIMIT 1
+        ON CONFLICT(SelectionDate) DO UPDATE SET QuoteId = excluded.QuoteId;
+        """;
+
+    private const string GetQuoteByIdSql = """
+        SELECT
+            Id,
+            Text,
+            Author,
+            Source
+        FROM Quotes
+        WHERE Id = @Id AND IsActive = 1
+        LIMIT 1;
+        """;
+
     private readonly string _connectionString;
 
     public SqliteRepository(string connectionString)
@@ -74,6 +103,71 @@ public sealed class SqliteRepository : IQuoteRepository
         _connectionString = connectionString;
     }
 
+    public async Task<Quote?> GetQuoteAsync(
+        long id,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = GetQuoteByIdSql;
+        AddParameter(command, "@Id", id.ToString());
+
+        return await QuerySingleOrDefaultQuoteAsync(command, cancellationToken);
+    }
+
+    public async Task<bool> SetQuoteOfTheDayAsync(
+        DateOnly date,
+        long? quoteId = null,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        using var command = connection.CreateCommand();
+        AddParameter(command, "@SelectionDate", date.ToString("yyyy-MM-dd"));
+
+        if (quoteId.HasValue)
+        {
+            command.CommandText = SetSpecificDailyQuoteSql;
+            AddParameter(command, "@QuoteId", quoteId.Value.ToString());
+        }
+        else
+        {
+            command.CommandText = SetRandomDailyQuoteSql;
+        }
+
+        var rowsAffected = await command.ExecuteNonQueryAsync(cancellationToken);
+        return rowsAffected > 0;
+    }
+
+    public async Task<bool> DeleteQuoteAsync(int id, CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        // Remove references in daily selections
+        using var selectCmd = connection.CreateCommand();
+        selectCmd.Transaction = transaction as SqliteTransaction;
+        selectCmd.CommandText = "DELETE FROM DailyQuoteSelections WHERE QuoteId = @Id;";
+        AddParameter(selectCmd, "@Id", id.ToString());
+        await selectCmd.ExecuteNonQueryAsync(cancellationToken);
+
+        // Delete quote and check if row existed
+        using var deleteCmd = connection.CreateCommand();
+        deleteCmd.Transaction = transaction as SqliteTransaction;
+        deleteCmd.CommandText = "DELETE FROM Quotes WHERE Id = @Id;";
+        AddParameter(deleteCmd, "@Id", id.ToString());
+
+        var rowsAffected = await deleteCmd.ExecuteNonQueryAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return rowsAffected > 0;
+    }
+
     public async Task<Quote?> GetQuoteOfTheDayAsync(
         DateOnly date,
         CancellationToken cancellationToken = default)
@@ -81,25 +175,23 @@ public sealed class SqliteRepository : IQuoteRepository
         await using var connection =
             new SqliteConnection(_connectionString);
 
-        var parameters = new
-        {
-            SelectionDate = date.ToString("yyyy-MM-dd")
-        };
+        await connection.OpenAsync(cancellationToken);
 
-        var createCommand = new CommandDefinition(
-            CreateDailySelectionSql,
-            parameters,
-            cancellationToken: cancellationToken);
+        var selectionDate = date.ToString("yyyy-MM-dd");
 
-        await connection.ExecuteAsync(createCommand);
+        using var createCommand = connection.CreateCommand();
+        createCommand.CommandText = CreateDailySelectionSql;
+        AddParameter(createCommand, "@SelectionDate", selectionDate);
 
-        var getCommand = new CommandDefinition(
-            GetDailyQuoteSql,
-            parameters,
-            cancellationToken: cancellationToken);
+        await createCommand.ExecuteNonQueryAsync(cancellationToken);
 
-        return await connection
-            .QuerySingleOrDefaultAsync<Quote>(getCommand);
+        using var getCommand = connection.CreateCommand();
+        getCommand.CommandText = GetDailyQuoteSql;
+        AddParameter(getCommand, "@SelectionDate", selectionDate);
+
+        return await QuerySingleOrDefaultQuoteAsync(
+            getCommand,
+            cancellationToken);
     }
 
     public async Task<Quote?> GetRandomQuoteAsync(
@@ -108,12 +200,14 @@ public sealed class SqliteRepository : IQuoteRepository
         await using var connection =
             new SqliteConnection(_connectionString);
 
-        var command = new CommandDefinition(
-            RandomQuoteSql,
-            cancellationToken: cancellationToken);
+        await connection.OpenAsync(cancellationToken);
 
-        return await connection
-            .QuerySingleOrDefaultAsync<Quote>(command);
+        using var command = connection.CreateCommand();
+        command.CommandText = RandomQuoteSql;
+
+        return await QuerySingleOrDefaultQuoteAsync(
+            command,
+            cancellationToken);
     }
 
     public async Task<Quote> InsertQuoteAsync(
@@ -125,19 +219,17 @@ public sealed class SqliteRepository : IQuoteRepository
         await using var connection =
             new SqliteConnection(_connectionString);
 
-        var parameters = new
-        {
-            Text = quote.Text!.Trim(),
-            Author = NormalizeOptional(quote.Author),
-            Source = NormalizeOptional(quote.Source)
-        };
+        await connection.OpenAsync(cancellationToken);
 
-        var command = new CommandDefinition(
-            InsertQuoteSql,
-            parameters,
-            cancellationToken: cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = InsertQuoteSql;
+        AddParameter(command, "@Text", quote.Text!.Trim());
+        AddParameter(command, "@Author", NormalizeOptional(quote.Author));
+        AddParameter(command, "@Source", NormalizeOptional(quote.Source));
 
-        return await connection.QuerySingleAsync<Quote>(command);
+        return await QuerySingleQuoteAsync(
+            command,
+            cancellationToken);
     }
 
     private static string? NormalizeOptional(string? value)
@@ -145,5 +237,81 @@ public sealed class SqliteRepository : IQuoteRepository
         return string.IsNullOrWhiteSpace(value)
             ? null
             : value.Trim();
+    }
+
+    private static void AddParameter(
+        SqliteCommand command,
+        string name,
+        string? value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value is null
+            ? DBNull.Value
+            : value;
+        command.Parameters.Add(parameter);
+    }
+
+    private static async Task<Quote?> QuerySingleOrDefaultQuoteAsync(
+        SqliteCommand command,
+        CancellationToken cancellationToken)
+    {
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        var quote = MapQuote(reader);
+
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            throw new InvalidOperationException(
+                "Sequence contains more than one element.");
+        }
+
+        return quote;
+    }
+
+    private static async Task<Quote> QuerySingleQuoteAsync(
+        SqliteCommand command,
+        CancellationToken cancellationToken)
+    {
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            throw new InvalidOperationException(
+                "Sequence contains no elements.");
+        }
+
+        var quote = MapQuote(reader);
+
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            throw new InvalidOperationException(
+                "Sequence contains more than one element.");
+        }
+
+        return quote;
+    }
+
+    private static Quote MapQuote(SqliteDataReader reader)
+    {
+        var idOrdinal = reader.GetOrdinal("Id");
+        var textOrdinal = reader.GetOrdinal("Text");
+        var authorOrdinal = reader.GetOrdinal("Author");
+        var sourceOrdinal = reader.GetOrdinal("Source");
+
+        return new Quote(
+            Id: reader.GetInt64(idOrdinal),
+            Text: reader.GetString(textOrdinal),
+            Author: reader.IsDBNull(authorOrdinal)
+                ? null
+                : reader.GetString(authorOrdinal),
+            Source: reader.IsDBNull(sourceOrdinal)
+                ? null
+                : reader.GetString(sourceOrdinal));
     }
 }

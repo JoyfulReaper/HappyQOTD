@@ -2,4 +2,8 @@
 
 public sealed record QuoteAddedEvent(
     long DurationMilliseconds,
-    bool Succeeded);
+    string Remote,
+    bool Succeeded)
+{
+    public const string EventType = "happyqotd.api.quote.added";
+}

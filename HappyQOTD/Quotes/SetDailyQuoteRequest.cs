@@ -1,0 +1,1 @@
+public record SetDailyQuoteRequest(long? QuoteId);
