@@ -6,8 +6,9 @@ namespace HappyQOTD.Events;
 // HTTP API request and response types
 [JsonSerializable(typeof(CreateQuoteRequest))]
 [JsonSerializable(typeof(Quote))]
+[JsonSerializable(typeof(List<CreateQuoteRequest>))]
+[JsonSerializable(typeof(List<Quote>))]
 [JsonSerializable(typeof(SetDailyQuoteRequest))]
-[JsonSerializable(typeof(CreateQuoteRequest))]
 
 // Mission Control event types
 [JsonSerializable(typeof(QuoteDeletedEvent))]
