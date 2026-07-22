@@ -201,6 +201,48 @@ public sealed class TcpQotdServerTests
     }
 
     [Fact]
+    public async Task StartupTelemetryTimeoutDoesNotPreventQuoteResponse()
+    {
+        var missionControl = new RecordingMissionControlClient(
+            delayUntilReleased: true);
+        await using var server = await TcpServerHarness.StartAsync(
+            new Quote(1, "Startup timeout"),
+            missionControl);
+
+        var response = await ReadQuoteAsync(server.Port, TimeSpan.FromSeconds(5));
+
+        Assert.Equal("Startup timeout\r\n", response);
+        Assert.Contains(
+            missionControl.Calls,
+            call => call.EventType == QOTDServiceStartedEvent.EventName);
+    }
+
+    [Fact]
+    public async Task StartupTelemetryFalseReturnDoesNotPreventQuoteResponse()
+    {
+        await using var server = await TcpServerHarness.StartAsync(
+            new Quote(1, "Startup false"),
+            new StartupOnlyMissionControlClient(returnValue: false));
+
+        var response = await ReadQuoteAsync(server.Port);
+
+        Assert.Equal("Startup false\r\n", response);
+    }
+
+    [Fact]
+    public async Task StartupTelemetryExceptionDoesNotPreventQuoteResponse()
+    {
+        await using var server = await TcpServerHarness.StartAsync(
+            new Quote(1, "Startup exception"),
+            new StartupOnlyMissionControlClient(
+                exception: new InvalidOperationException("boom")));
+
+        var response = await ReadQuoteAsync(server.Port);
+
+        Assert.Equal("Startup exception\r\n", response);
+    }
+
+    [Fact]
     public async Task ClientReceivesEofBeforeTelemetryCompletes()
     {
         var missionControl = new BlockingServedMissionControlClient();
@@ -274,7 +316,12 @@ public sealed class TcpQotdServerTests
         Assert.Equal("After disconnect\r\n", response);
     }
 
-    private static async Task<string> ReadQuoteAsync(int port)
+    private static Task<string> ReadQuoteAsync(int port) =>
+        ReadQuoteAsync(port, TimeSpan.FromSeconds(2));
+
+    private static async Task<string> ReadQuoteAsync(
+        int port,
+        TimeSpan timeout)
     {
         using var client = new TcpClient();
         await client.ConnectAsync(IPAddress.Loopback, port).WaitAsync(
@@ -282,7 +329,7 @@ public sealed class TcpQotdServerTests
 
         await using var stream = client.GetStream();
         using var reader = new StreamReader(stream);
-        return await reader.ReadToEndAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        return await reader.ReadToEndAsync().WaitAsync(timeout);
     }
 
     private sealed class TcpServerHarness : IAsyncDisposable
@@ -444,6 +491,41 @@ public sealed class TcpQotdServerTests
             {
                 await _finishedSignal.WaitAsync(cancellation.Token);
             }
+        }
+    }
+
+    private sealed class StartupOnlyMissionControlClient : IMissionControlClient
+    {
+        private readonly bool _returnValue;
+        private readonly Exception? _exception;
+
+        public StartupOnlyMissionControlClient(
+            bool returnValue = true,
+            Exception? exception = null)
+        {
+            _returnValue = returnValue;
+            _exception = exception;
+        }
+
+        public Task<bool> TryPublishAsync<TPayload>(
+            string eventType,
+            TPayload payload,
+            JsonTypeInfo<TPayload> payloadTypeInfo,
+            DateTimeOffset occurredAt,
+            string? correlationId,
+            CancellationToken cancellationToken)
+        {
+            if (eventType == QOTDServiceStartedEvent.EventName)
+            {
+                if (_exception is not null)
+                {
+                    throw _exception;
+                }
+
+                return Task.FromResult(_returnValue);
+            }
+
+            return Task.FromResult(true);
         }
     }
 }

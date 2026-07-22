@@ -39,30 +39,10 @@ public class HappyQOTDWorker(
 
         var occurredAt = DateTimeOffset.UtcNow;
 
-        try
-        {
-            bool published = await missionControlClient.TryPublishAsync(
-                eventType: QOTDServiceStartedEvent.EventName,
-                payload: new QOTDServiceStartedEvent(
-                    $"{ipAddress}:{options.Value.Port}"),
-                payloadTypeInfo: QOTDJsonContext.Default.QOTDServiceStartedEvent,
-                occurredAt: occurredAt,
-                correlationId: null,
-                cancellationToken: stoppingToken);
-
-            if (!published)
-            {
-                logger.LogWarning(
-                    "Mission Control did not accept {EventType}",
-                    QOTDServiceStartedEvent.EventName);
-            }
-        }
-        catch (Exception exception)
-        {
-            logger.LogWarning(
-                exception,
-                "Failed to publish Mission Control event for QOTD Service Started");
-        }
+        await PublishServiceStartedTelemetryAsync(
+            $"{ipAddress}:{options.Value.Port}",
+            occurredAt,
+            stoppingToken);
 
         logger.LogInformation(
             "HappyQOTD Server Listening on {address}:{port}",
@@ -290,6 +270,50 @@ public class HappyQOTDWorker(
                 exception,
                 "Failed to publish telemetry for QOTD client {Remote}.",
                 telemetry.Remote);
+        }
+    }
+
+    private async Task PublishServiceStartedTelemetryAsync(
+        string endpoint,
+        DateTimeOffset occurredAt,
+        CancellationToken stoppingToken)
+    {
+        using var timeout =
+            CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        timeout.CancelAfter(TelemetryPublishTimeout);
+
+        try
+        {
+            bool published = await missionControlClient.TryPublishAsync(
+                eventType: QOTDServiceStartedEvent.EventName,
+                payload: new QOTDServiceStartedEvent(endpoint),
+                payloadTypeInfo: QOTDJsonContext.Default.QOTDServiceStartedEvent,
+                occurredAt: occurredAt,
+                correlationId: null,
+                cancellationToken: timeout.Token);
+
+            if (!published)
+            {
+                logger.LogWarning(
+                    "Mission Control did not accept {EventType}",
+                    QOTDServiceStartedEvent.EventName);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            logger.LogDebug(
+                "Service-started telemetry publishing stopped during shutdown.");
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogWarning(
+                "Timed out publishing Mission Control event for QOTD Service Started.");
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Failed to publish Mission Control event for QOTD Service Started");
         }
     }
 
