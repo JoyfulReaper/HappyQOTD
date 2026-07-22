@@ -25,12 +25,14 @@ public class HappyQOTDWorker(
         options.Value.MaxConcurrentConnections);
     private long _nextConnectionId;
 
+    public int BoundPort { get; private set; }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         IPAddress ipAddress = IPAddressUtils.ParseListenAddress(options.Value.ListenAddress);
         _listener = new TcpListener(ipAddress, options.Value.Port);
         _listener.Start();
+        BoundPort = ((IPEndPoint)_listener.LocalEndpoint).Port;
 
         var occurredAt = DateTimeOffset.UtcNow;
 
@@ -133,18 +135,19 @@ public class HappyQOTDWorker(
         var correlationId = Guid.NewGuid().ToString("N");
 
         bool responseCompleted = false;
+        EndPoint? remote = null;
+        bool isIgnoredTelemetrySource = false;
         using (client)
         {
             client.NoDelay = true;
-            EndPoint? remote = client.Client.RemoteEndPoint;
+            remote = client.Client.RemoteEndPoint;
 
             var remoteAddress = (remote as IPEndPoint)?
                 .Address
                 .MapToIPv4()
                 .ToString();
 
-            bool isIgnoredTelemetrySource =
-                IsIgnoredTelemetrySource(remote);
+            isIgnoredTelemetrySource = IsIgnoredTelemetrySource(remote);
 
             try
             {
@@ -210,33 +213,33 @@ public class HappyQOTDWorker(
             }
 
             stopwatch.Stop();
+        }
 
-            try
+        try
+        {
+            if (isIgnoredTelemetrySource)
             {
-                if (isIgnoredTelemetrySource)
-                {
-                    return;
-                }
+                return;
+            }
 
-                await missionControlClient.TryPublishAsync(
-                    eventType: QOTDServedEvent.EventName,
-                    payload: new QOTDServedEvent(
-                        remote?.ToString() ?? "unknown",
-                        stopwatch.ElapsedMilliseconds,
-                        responseCompleted
-                        ),
-                    payloadTypeInfo: QOTDJsonContext.Default.QOTDServedEvent,
-                    occurredAt,
-                    correlationId,
-                    stoppingToken);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(
-                    ex,
-                    "Failed to publish telemetry for QOTD client {Remote}.",
-                    remote);
-            }
+            await missionControlClient.TryPublishAsync(
+                eventType: QOTDServedEvent.EventName,
+                payload: new QOTDServedEvent(
+                    remote?.ToString() ?? "unknown",
+                    stopwatch.ElapsedMilliseconds,
+                    responseCompleted
+                    ),
+                payloadTypeInfo: QOTDJsonContext.Default.QOTDServedEvent,
+                occurredAt,
+                correlationId,
+                stoppingToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Failed to publish telemetry for QOTD client {Remote}.",
+                remote);
         }
     }
 
