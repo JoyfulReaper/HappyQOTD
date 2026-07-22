@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json.Serialization.Metadata;
 using HappyQOTD.Events;
 using HappyQOTD.Quotes;
 using HappyQOTD.Tests.TestInfrastructure;
+using JoyfulReaperLib.MissionControl;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -89,22 +91,19 @@ public sealed class TcpQotdServerTests
     [Fact]
     public async Task MaximumConcurrentConnectionLimitIsRespected()
     {
-        var missionControl = new RecordingMissionControlClient(delayUntilReleased: true);
+        var missionControl = new BlockingServedMissionControlClient();
         await using var server = await TcpServerHarness.StartAsync(
             new Quote(1, "Limited"),
             missionControl,
             maxConcurrentConnections: 1);
-        missionControl.Clear();
 
         var firstRead = ReadQuoteAsync(server.Port);
-        await missionControl.Entered.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("Limited\r\n", await firstRead);
+        await missionControl.WaitForStartedCountAsync(1, TimeSpan.FromSeconds(2));
 
         var secondRead = ReadQuoteAsync(server.Port);
-        await Assert.ThrowsAsync<TimeoutException>(
-            () => secondRead.WaitAsync(TimeSpan.FromMilliseconds(250)));
 
         missionControl.Release();
-        Assert.Equal("Limited\r\n", await firstRead);
         Assert.Equal("Limited\r\n", await secondRead.WaitAsync(TimeSpan.FromSeconds(2)));
     }
 
@@ -201,6 +200,80 @@ public sealed class TcpQotdServerTests
         Assert.Equal("False return\r\n", response);
     }
 
+    [Fact]
+    public async Task ClientReceivesEofBeforeTelemetryCompletes()
+    {
+        var missionControl = new BlockingServedMissionControlClient();
+        await using var server = await TcpServerHarness.StartAsync(
+            new Quote(1, "EOF"),
+            missionControl);
+
+        var response = await ReadQuoteAsync(server.Port);
+        await missionControl.WaitForStartedCountAsync(1, TimeSpan.FromSeconds(2));
+
+        Assert.Equal("EOF\r\n", response);
+        Assert.Equal(0, missionControl.FinishedCount);
+
+        missionControl.Release();
+        await missionControl.WaitForFinishedCountAsync(1, TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task TelemetryExceptionDoesNotBreakLaterTcpRequests()
+    {
+        var missionControl = new BlockingServedMissionControlClient(
+            throwAfterRelease: true);
+        await using var server = await TcpServerHarness.StartAsync(
+            new Quote(1, "Still alive"),
+            missionControl);
+
+        var firstResponse = await ReadQuoteAsync(server.Port);
+        await missionControl.WaitForStartedCountAsync(1, TimeSpan.FromSeconds(2));
+
+        missionControl.Release();
+        await missionControl.WaitForFinishedCountAsync(1, TimeSpan.FromSeconds(2));
+
+        var secondResponse = await ReadQuoteAsync(server.Port);
+        await missionControl.WaitForStartedCountAsync(2, TimeSpan.FromSeconds(2));
+
+        Assert.Equal("Still alive\r\n", firstResponse);
+        Assert.Equal("Still alive\r\n", secondResponse);
+    }
+
+    [Fact]
+    public async Task TelemetryTimeoutDoesNotHangHandler()
+    {
+        var missionControl = new BlockingServedMissionControlClient();
+        await using var server = await TcpServerHarness.StartAsync(
+            new Quote(1, "Timeout"),
+            missionControl,
+            maxConcurrentConnections: 1);
+
+        var response = await ReadQuoteAsync(server.Port);
+        await missionControl.WaitForStartedCountAsync(1, TimeSpan.FromSeconds(2));
+        await missionControl.WaitForFinishedCountAsync(1, TimeSpan.FromSeconds(5));
+
+        Assert.Equal("Timeout\r\n", response);
+        Assert.Equal(1, missionControl.CanceledCount);
+    }
+
+    [Fact]
+    public async Task ConnectionSlotIsReleasedAfterClientDisconnect()
+    {
+        await using var server = await TcpServerHarness.StartAsync(
+            new Quote(1, "After disconnect"),
+            maxConcurrentConnections: 1);
+
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, server.Port).WaitAsync(
+            TimeSpan.FromSeconds(2));
+        client.Dispose();
+
+        var response = await ReadQuoteAsync(server.Port);
+
+        Assert.Equal("After disconnect\r\n", response);
+    }
+
     private static async Task<string> ReadQuoteAsync(int port)
     {
         using var client = new TcpClient();
@@ -226,7 +299,7 @@ public sealed class TcpQotdServerTests
 
         public static Task<TcpServerHarness> StartAsync(
             Quote? quote,
-            RecordingMissionControlClient? missionControl = null,
+            IMissionControlClient? missionControl = null,
             int maxConcurrentConnections = 4,
             string[]? ignoredTelemetryAddresses = null) =>
             StartAsync(
@@ -237,7 +310,7 @@ public sealed class TcpQotdServerTests
 
         public static async Task<TcpServerHarness> StartAsync(
             FakeQuoteRepository repository,
-            RecordingMissionControlClient? missionControl = null,
+            IMissionControlClient? missionControl = null,
             int maxConcurrentConnections = 4,
             string[]? ignoredTelemetryAddresses = null)
         {
@@ -285,6 +358,92 @@ public sealed class TcpQotdServerTests
         public async ValueTask DisposeAsync()
         {
             await StopAsync();
+        }
+    }
+
+    private sealed class BlockingServedMissionControlClient : IMissionControlClient
+    {
+        private readonly TaskCompletionSource _release =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly SemaphoreSlim _startedSignal = new(0);
+        private readonly SemaphoreSlim _finishedSignal = new(0);
+        private readonly bool _throwAfterRelease;
+        private int _startedCount;
+        private int _finishedCount;
+        private int _canceledCount;
+
+        public BlockingServedMissionControlClient(
+            bool throwAfterRelease = false)
+        {
+            _throwAfterRelease = throwAfterRelease;
+        }
+
+        public int StartedCount => Volatile.Read(ref _startedCount);
+        public int FinishedCount => Volatile.Read(ref _finishedCount);
+        public int CanceledCount => Volatile.Read(ref _canceledCount);
+
+        public async Task<bool> TryPublishAsync<TPayload>(
+            string eventType,
+            TPayload payload,
+            JsonTypeInfo<TPayload> payloadTypeInfo,
+            DateTimeOffset occurredAt,
+            string? correlationId,
+            CancellationToken cancellationToken)
+        {
+            if (eventType != QOTDServedEvent.EventName)
+            {
+                return true;
+            }
+
+            Interlocked.Increment(ref _startedCount);
+            _startedSignal.Release();
+
+            try
+            {
+                await _release.Task.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                Interlocked.Increment(ref _canceledCount);
+                throw;
+            }
+            finally
+            {
+                Interlocked.Increment(ref _finishedCount);
+                _finishedSignal.Release();
+            }
+
+            if (_throwAfterRelease)
+            {
+                throw new InvalidOperationException("Telemetry failure");
+            }
+
+            return true;
+        }
+
+        public void Release() =>
+            _release.TrySetResult();
+
+        public async Task WaitForStartedCountAsync(
+            int expectedCount,
+            TimeSpan timeout)
+        {
+            using var cancellation = new CancellationTokenSource(timeout);
+            while (StartedCount < expectedCount)
+            {
+                await _startedSignal.WaitAsync(cancellation.Token);
+            }
+        }
+
+        public async Task WaitForFinishedCountAsync(
+            int expectedCount,
+            TimeSpan timeout)
+        {
+            using var cancellation = new CancellationTokenSource(timeout);
+            while (FinishedCount < expectedCount)
+            {
+                await _finishedSignal.WaitAsync(cancellation.Token);
+            }
         }
     }
 }

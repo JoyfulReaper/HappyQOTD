@@ -17,6 +17,9 @@ public class HappyQOTDWorker(
     IQuoteRepository quoteRepository,
     IMissionControlClient missionControlClient) : BackgroundService
 {
+    private static readonly TimeSpan TelemetryPublishTimeout =
+        TimeSpan.FromSeconds(2);
+
     private TcpListener? _listener;
     private readonly ConcurrentDictionary<long, Task> _activeConnections = new();
     private volatile bool _stopRequested;
@@ -101,7 +104,6 @@ public class HappyQOTDWorker(
                 _ = task.ContinueWith(ct =>
                 {
                     _activeConnections.TryRemove(connectionId, out _);
-                    _connectionLimit.Release();
                 },
                 CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously,
@@ -137,109 +139,157 @@ public class HappyQOTDWorker(
         bool responseCompleted = false;
         EndPoint? remote = null;
         bool isIgnoredTelemetrySource = false;
-        using (client)
-        {
-            client.NoDelay = true;
-            remote = client.Client.RemoteEndPoint;
-
-            var remoteAddress = (remote as IPEndPoint)?
-                .Address
-                .MapToIPv4()
-                .ToString();
-
-            isIgnoredTelemetrySource = IsIgnoredTelemetrySource(remote);
-
-            try
-            {
-                DateOnly today =
-                    DateOnly.FromDateTime(
-                        DateTime.UtcNow);
-
-                Quote? quote =
-                    await quoteRepository.GetQuoteOfTheDayAsync(
-                        today,
-                        stoppingToken);
-
-                string response = quote is null
-                    ? "No quote is available today.\r\n"
-                    : FormatQuote(quote);
-
-                byte[] responseBytes =
-                    Encoding.UTF8.GetBytes(response);
-
-                await using NetworkStream stream = client.GetStream();
-                await stream.WriteAsync(responseBytes, stoppingToken);
-                await stream.FlushAsync(stoppingToken);
-                responseCompleted = true;
-            }
-            catch (OperationCanceledException)
-            {
-                logger.LogWarning(
-                    "Connection {ConnectionId} from {Remote} timed out.",
-                    connectionId,
-                    remote);
-            }
-            catch (InvalidDataException exception)
-            {
-                logger.LogWarning(
-                    exception,
-                    "Rejected malformed request on connection {ConnectionId} from {Remote}.",
-                    connectionId,
-                    remote);
-            }
-            catch (IOException exception)
-            {
-                logger.LogDebug(
-                    exception,
-                    "Connection {ConnectionId} from {Remote} ended early.",
-                    connectionId,
-                    remote);
-            }
-            catch (SocketException exception)
-            {
-                logger.LogDebug(
-                    exception,
-                    "Socket error on connection {ConnectionId} from {Remote}.",
-                    connectionId,
-                    remote);
-            }
-            catch (Exception exception)
-            {
-                logger.LogError(
-                    exception,
-                    "Unhandled error on connection {ConnectionId} from {Remote}.",
-                    connectionId,
-                    remote);
-            }
-
-            stopwatch.Stop();
-        }
+        QotdServedTelemetryResult? telemetry = null;
 
         try
         {
+            using (client)
+            {
+                client.NoDelay = true;
+                remote = client.Client.RemoteEndPoint;
+
+                isIgnoredTelemetrySource = IsIgnoredTelemetrySource(remote);
+
+                try
+                {
+                    DateOnly today =
+                        DateOnly.FromDateTime(
+                            DateTime.UtcNow);
+
+                    Quote? quote =
+                        await quoteRepository.GetQuoteOfTheDayAsync(
+                            today,
+                            stoppingToken);
+
+                    string response = quote is null
+                        ? "No quote is available today.\r\n"
+                        : FormatQuote(quote);
+
+                    byte[] responseBytes =
+                        Encoding.UTF8.GetBytes(response);
+
+                    await using NetworkStream stream = client.GetStream();
+                    await stream.WriteAsync(responseBytes, stoppingToken);
+                    await stream.FlushAsync(stoppingToken);
+                    responseCompleted = true;
+                }
+                catch (OperationCanceledException)
+                {
+                    logger.LogWarning(
+                        "Connection {ConnectionId} from {Remote} timed out.",
+                        connectionId,
+                        remote);
+                }
+                catch (InvalidDataException exception)
+                {
+                    logger.LogWarning(
+                        exception,
+                        "Rejected malformed request on connection {ConnectionId} from {Remote}.",
+                        connectionId,
+                        remote);
+                }
+                catch (IOException exception)
+                {
+                    logger.LogDebug(
+                        exception,
+                        "Connection {ConnectionId} from {Remote} ended early.",
+                        connectionId,
+                        remote);
+                }
+                catch (SocketException exception)
+                {
+                    logger.LogDebug(
+                        exception,
+                        "Socket error on connection {ConnectionId} from {Remote}.",
+                        connectionId,
+                        remote);
+                }
+                catch (Exception exception)
+                {
+                    logger.LogError(
+                        exception,
+                        "Unhandled error on connection {ConnectionId} from {Remote}.",
+                        connectionId,
+                        remote);
+                }
+
+                stopwatch.Stop();
+            }
+
             if (isIgnoredTelemetrySource)
             {
                 return;
             }
 
-            await missionControlClient.TryPublishAsync(
-                eventType: QOTDServedEvent.EventName,
-                payload: new QOTDServedEvent(
-                    remote?.ToString() ?? "unknown",
-                    stopwatch.ElapsedMilliseconds,
-                    responseCompleted
-                    ),
-                payloadTypeInfo: QOTDJsonContext.Default.QOTDServedEvent,
+            telemetry = new QotdServedTelemetryResult(
+                remote?.ToString() ?? "unknown",
+                stopwatch.ElapsedMilliseconds,
+                responseCompleted,
                 occurredAt,
-                correlationId,
+                correlationId);
+        }
+        finally
+        {
+            _connectionLimit.Release();
+        }
+
+        if (telemetry is not null)
+        {
+            await PublishQotdServedTelemetryAsync(
+                telemetry,
                 stoppingToken);
         }
-        catch (Exception ex)
+    }
+
+    private async Task PublishQotdServedTelemetryAsync(
+        QotdServedTelemetryResult telemetry,
+        CancellationToken stoppingToken)
+    {
+        using CancellationTokenSource timeoutTokenSource =
+            new(TelemetryPublishTimeout);
+        using CancellationTokenSource publishTokenSource =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                stoppingToken,
+                timeoutTokenSource.Token);
+
+        try
+        {
+            bool published = await missionControlClient.TryPublishAsync(
+                eventType: QOTDServedEvent.EventName,
+                payload: new QOTDServedEvent(
+                    telemetry.Remote,
+                    telemetry.DurationMilliseconds,
+                    telemetry.Succeeded),
+                payloadTypeInfo: QOTDJsonContext.Default.QOTDServedEvent,
+                occurredAt: telemetry.OccurredAt,
+                correlationId: telemetry.CorrelationId,
+                cancellationToken: publishTokenSource.Token);
+
+            if (!published)
+            {
+                logger.LogWarning(
+                    "Mission Control did not accept telemetry for QOTD client {Remote}.",
+                    telemetry.Remote);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            logger.LogDebug(
+                "Telemetry publishing stopped for QOTD client {Remote}.",
+                telemetry.Remote);
+        }
+        catch (OperationCanceledException)
         {
             logger.LogWarning(
-                ex,
+                "Timed out publishing telemetry for QOTD client {Remote}.",
+                telemetry.Remote);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
                 "Failed to publish telemetry for QOTD client {Remote}.",
-                remote);
+                telemetry.Remote);
         }
     }
 
@@ -291,4 +341,10 @@ public class HappyQOTDWorker(
         return base.StopAsync(cancellationToken);
     }
 
+    private sealed record QotdServedTelemetryResult(
+        string Remote,
+        long DurationMilliseconds,
+        bool Succeeded,
+        DateTimeOffset OccurredAt,
+        string CorrelationId);
 }
