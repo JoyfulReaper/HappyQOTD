@@ -90,10 +90,17 @@ public static class HappyQotdApplicationExtensions
                 });
         });
 
+        var qotdOptions = configuration
+            .GetSection(HappyQOTDOptions.SectionName)
+            .Get<HappyQOTDOptions>() ?? new HappyQOTDOptions();
+
         services.Configure<HappyQOTDOptions>(
             configuration.GetSection(HappyQOTDOptions.SectionName));
 
-        var quoteConnectionString = QuoteDatabase.Initialize();
+        var quoteConnectionString = string.IsNullOrWhiteSpace(
+            qotdOptions.QuoteConnectionString)
+            ? QuoteDatabase.Initialize()
+            : qotdOptions.QuoteConnectionString;
         services.AddSingleton<IQuoteRepository>(
             _ => new SqliteRepository(quoteConnectionString));
 
@@ -116,7 +123,10 @@ public static class HappyQotdApplicationExtensions
             configuration.GetSection(MissionControlClientOptions.SectionName));
 
         services.AddScoped<ApiKeyEndpointFilter>();
-        services.AddHostedService<HappyQOTDWorker>();
+        if (qotdOptions.EnableTcpServer)
+        {
+            services.AddHostedService<HappyQOTDWorker>();
+        }
         services.AddProblemDetails();
 
         return services;

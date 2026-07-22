@@ -114,19 +114,6 @@ public static class HappyQotdRouteExtensions
 
     private static string GetRemoteIpAddress(HttpContext httpContext)
     {
-        // Check X-Forwarded-For header first (populated by reverse proxies/load balancers)
-        if (httpContext.Request.Headers.TryGetValue("X-Forwarded-For", out var forwardedFor)
-            && !string.IsNullOrWhiteSpace(forwardedFor))
-        {
-            // Take the first IP in the list (client IP is listed first)
-            var clientIp = forwardedFor.ToString().Split(',')[0].Trim();
-            if (!string.IsNullOrWhiteSpace(clientIp))
-            {
-                return clientIp;
-            }
-        }
-
-        // Fall back to direct socket connection remote IP
         return httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     }
 
@@ -292,6 +279,7 @@ public static class HappyQotdRouteExtensions
         IQuoteRepository quoteRepository,
         IMissionControlClient missionControlClient,
         ILogger<Program> logger,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var occurredAt = DateTimeOffset.UtcNow;
@@ -301,13 +289,14 @@ public static class HappyQotdRouteExtensions
         var quote = await quoteRepository.GetRandomQuoteAsync(cancellationToken);
 
         stopwatch.Stop();
-
+        var remote = GetRemoteIpAddress(httpContext);
         await TryPublishTelemetryAsync(
             missionControlClient,
             logger,
             eventType: "happyqotd.api.randomquote.served",
             payload: new RandomQuoteServedEvent(
                 DurationMilliseconds: stopwatch.ElapsedMilliseconds,
+                Remote: remote,
                 Succeeded: quote is not null),
             payloadTypeInfo: QOTDJsonContext.Default.RandomQuoteServedEvent,
             occurredAt,

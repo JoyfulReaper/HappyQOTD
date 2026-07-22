@@ -1,9 +1,8 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
+
 WORKDIR /src
 
 COPY . .
-
-WORKDIR /src
 
 RUN apk add --no-cache \
     clang \
@@ -21,7 +20,10 @@ RUN dotnet publish HappyQOTD/HappyQOTD.csproj \
     --output /app/publish
 
 FROM mcr.microsoft.com/dotnet/runtime-deps:10.0-alpine AS final
+
 WORKDIR /app
+
+RUN apk add --no-cache curl
 
 COPY --from=build /app/publish .
 

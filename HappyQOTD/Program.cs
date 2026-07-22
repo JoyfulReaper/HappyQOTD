@@ -10,3 +10,5 @@ app.UseHappyQotdMiddleware();
 app.MapHappyQotdEndpoints();
 
 app.Run();
+
+public partial class Program;
