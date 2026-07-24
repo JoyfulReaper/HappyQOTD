@@ -1,3 +1,9 @@
+/*
+ * Happy QOTD Service
+ * Copyright (c) 2026 Kyle Givler
+ * Licensed under the MIT License.
+ */
+
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
@@ -9,9 +15,7 @@ public sealed class SqliteHealthCheck : IHealthCheck
 
     public SqliteHealthCheck(string connectionString)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(
-            connectionString);
-
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
         _connectionString = connectionString;
     }
 
@@ -21,16 +25,14 @@ public sealed class SqliteHealthCheck : IHealthCheck
     {
         try
         {
-            await using var connection =
-                new SqliteConnection(_connectionString);
+            await using var connection = new SqliteConnection(_connectionString);
 
             await connection.OpenAsync(cancellationToken);
 
             await using var command = connection.CreateCommand();
             command.CommandText = "SELECT 1;";
 
-            var result = await command.ExecuteScalarAsync(
-                cancellationToken);
+            var result = await command.ExecuteScalarAsync(cancellationToken);
 
             return result is 1L
                 ? HealthCheckResult.Healthy(

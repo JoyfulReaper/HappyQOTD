@@ -1,12 +1,17 @@
-﻿using Microsoft.Extensions.Options;
+﻿/*
+ * Happy QOTD Service
+ * Copyright (c) 2026 Kyle Givler
+ * Licensed under the MIT License.
+ */
+
+using Microsoft.Extensions.Options;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace HappyQOTD.Security;
 
 public sealed class ApiKeyEndpointFilter(
-    IOptions<QotdSecurityOptions> options)
-    : IEndpointFilter
+    IOptions<QotdSecurityOptions> options) : IEndpointFilter
 {
     public const string HeaderName = "X-HappyQOTD-Key";
 
@@ -40,18 +45,11 @@ public sealed class ApiKeyEndpointFilter(
         return await next(context);
     }
 
-    private static bool KeysMatch(
-        string expected,
-        string supplied)
+    private static bool KeysMatch(string expected, string supplied)
     {
-        var expectedHash = SHA256.HashData(
-            Encoding.UTF8.GetBytes(expected));
+        var expectedHash = SHA256.HashData(Encoding.UTF8.GetBytes(expected));
+        var suppliedHash = SHA256.HashData(Encoding.UTF8.GetBytes(supplied));
 
-        var suppliedHash = SHA256.HashData(
-            Encoding.UTF8.GetBytes(supplied));
-
-        return CryptographicOperations.FixedTimeEquals(
-            expectedHash,
-            suppliedHash);
+        return CryptographicOperations.FixedTimeEquals(expectedHash, suppliedHash);
     }
 }

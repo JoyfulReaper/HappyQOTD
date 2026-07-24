@@ -1,3 +1,9 @@
+/*
+ * Happy QOTD Service
+ * Copyright (c) 2026 Kyle Givler
+ * Licensed under the MIT License.
+ */
+
 using HappyQOTD.Data;
 using HappyQOTD.Events;
 using HappyQOTD.Quotes;
@@ -25,9 +31,7 @@ public static class HappyQotdApplicationExtensions
 
         services.ConfigureHttpJsonOptions(options =>
         {
-            options.SerializerOptions.TypeInfoResolverChain.Insert(
-                0,
-                QOTDJsonContext.Default);
+            options.SerializerOptions.TypeInfoResolverChain.Insert(0, QOTDJsonContext.Default);
         });
 
         services.AddCors(options =>
@@ -46,8 +50,7 @@ public static class HappyQotdApplicationExtensions
 
         services.AddRateLimiter(options =>
         {
-            options.RejectionStatusCode =
-                StatusCodes.Status429TooManyRequests;
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
             options.AddFixedWindowLimiter(
                 QuoteWriteRateLimitPolicy,
@@ -65,8 +68,7 @@ public static class HappyQotdApplicationExtensions
                 QuoteReadRateLimitPolicy,
                 httpContext =>
                 {
-                    var remoteAddress =
-                        httpContext.Connection.RemoteIpAddress;
+                    var remoteAddress = httpContext.Connection.RemoteIpAddress;
 
                     if (remoteAddress is not null &&
                         IPAddress.IsLoopback(remoteAddress))
@@ -76,8 +78,7 @@ public static class HappyQotdApplicationExtensions
                     }
 
                     return RateLimitPartition.GetFixedWindowLimiter(
-                        partitionKey:
-                            remoteAddress?.ToString() ?? "unknown",
+                        partitionKey: remoteAddress?.ToString() ?? "unknown",
                         factory: _ => new FixedWindowRateLimiterOptions
                         {
                             PermitLimit = 120,
@@ -97,10 +98,10 @@ public static class HappyQotdApplicationExtensions
         services.Configure<HappyQOTDOptions>(
             configuration.GetSection(HappyQOTDOptions.SectionName));
 
-        var quoteConnectionString = string.IsNullOrWhiteSpace(
-            qotdOptions.QuoteConnectionString)
+        var quoteConnectionString = string.IsNullOrWhiteSpace(qotdOptions.QuoteConnectionString)
             ? QuoteDatabase.Initialize()
             : qotdOptions.QuoteConnectionString;
+
         services.AddSingleton<IQuoteRepository>(
             _ => new SqliteRepository(quoteConnectionString));
 
@@ -116,11 +117,8 @@ public static class HappyQotdApplicationExtensions
                     failureStatus: HealthStatus.Unhealthy,
                     tags: ["ready"]));
 
-        services.Configure<QotdSecurityOptions>(
-            configuration.GetSection(QotdSecurityOptions.SectionName));
-
-        services.AddMissionControlClient(
-            configuration.GetSection(MissionControlClientOptions.SectionName));
+        services.Configure<QotdSecurityOptions>(configuration.GetSection(QotdSecurityOptions.SectionName));
+        services.AddMissionControlClient(configuration.GetSection(MissionControlClientOptions.SectionName));
 
         services.AddScoped<ApiKeyEndpointFilter>();
         if (qotdOptions.EnableTcpServer)
@@ -136,8 +134,7 @@ public static class HappyQotdApplicationExtensions
     {
         var forwardedOptions = new ForwardedHeadersOptions
         {
-            ForwardedHeaders =
-                ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+            ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
         };
 
         forwardedOptions.KnownIPNetworks.Clear();

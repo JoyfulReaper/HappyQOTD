@@ -1,4 +1,10 @@
-﻿using HappyQOTD.Quotes;
+﻿/*
+ * Happy QOTD Service
+ * Copyright (c) 2026 Kyle Givler
+ * Licensed under the MIT License.
+ */
+
+using HappyQOTD.Quotes;
 using System.Text.Json.Serialization;
 
 namespace HappyQOTD.Events;

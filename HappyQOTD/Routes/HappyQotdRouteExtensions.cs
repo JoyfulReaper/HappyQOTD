@@ -1,3 +1,9 @@
+/*
+ * Happy QOTD Service
+ * Copyright (c) 2026 Kyle Givler
+ * Licensed under the MIT License.
+ */
+
 using HappyQOTD.Events;
 using HappyQOTD.Quotes;
 using HappyQOTD.Security;

@@ -1,4 +1,10 @@
-﻿using JoyfulReaperLib.Sqlite;
+﻿/*
+ * Happy QOTD Service
+ * Copyright (c) 2026 Kyle Givler
+ * Licensed under the MIT License.
+ */
+
+using JoyfulReaperLib.Sqlite;
 
 namespace HappyQOTD.Data;
 

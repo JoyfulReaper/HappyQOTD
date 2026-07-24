@@ -1,9 +1,14 @@
-﻿namespace HappyQOTD.Quotes;
+﻿/*
+ * Happy QOTD Service
+ * Copyright (c) 2026 Kyle Givler
+ * Licensed under the MIT License.
+ */
+
+namespace HappyQOTD.Quotes;
 
 public interface IQuoteRepository
 {
-    Task<Quote?> GetRandomQuoteAsync(
-        CancellationToken cancellationToken = default);
+    Task<Quote?> GetRandomQuoteAsync(CancellationToken cancellationToken = default);
 
     Task<Quote> InsertQuoteAsync(
         CreateQuoteRequest quote,
