@@ -101,8 +101,6 @@ public static class QuoteDatabase
 
     public static string Initialize()
     {
-        return SqliteDatabaseInitializer.Initialize(
-            "happyqotd.db",
-            SchemaSql);
+        return SqliteDatabaseInitializer.Initialize("happyqotd.db", SchemaSql);
     }
 }

@@ -23,5 +23,4 @@ namespace HappyQOTD.Events;
 [JsonSerializable(typeof(QuoteAddedEvent))]
 [JsonSerializable(typeof(RandomQuoteServedEvent))]
 [JsonSerializable(typeof(QOTDServiceStartedEvent))]
-internal sealed partial class QOTDJsonContext
-    : JsonSerializerContext;
+internal sealed partial class QOTDJsonContext : JsonSerializerContext;

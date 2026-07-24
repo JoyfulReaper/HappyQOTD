@@ -14,11 +14,9 @@ namespace HappyQOTD;
 public sealed class QotdLifecycleService(
     ILogger<QotdLifecycleService> logger,
     IMissionControlClient missionControlClient,
-    IOptions<HappyQOTDOptions> options)
-    : IHostedLifecycleService
+    IOptions<HappyQOTDOptions> options) : IHostedLifecycleService
 {
-    private static readonly TimeSpan TelemetryPublishTimeout =
-        TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan TelemetryPublishTimeout = TimeSpan.FromSeconds(2); // TODO Make configurable.
 
     public Task StartingAsync(CancellationToken cancellationToken) =>
         Task.CompletedTask;
@@ -28,19 +26,14 @@ public sealed class QotdLifecycleService(
 
     public async Task StartedAsync(CancellationToken cancellationToken)
     {
-        var listenAddress =
-            IPAddressUtils.ParseListenAddress(
-                options.Value.ListenAddress);
+        var listenAddress = IPAddressUtils.ParseListenAddress(options.Value.ListenAddress);
 
         logger.LogInformation(
             "HappyQOTD TCP server started on {Address}:{Port}",
             listenAddress,
             options.Value.Port);
 
-        using var timeout =
-            CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken);
-
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TelemetryPublishTimeout);
 
         try
@@ -50,8 +43,7 @@ public sealed class QotdLifecycleService(
                     eventType: QOTDServiceStartedEvent.EventName,
                     payload: new QOTDServiceStartedEvent(
                         $"{listenAddress}:{options.Value.Port}"),
-                    payloadTypeInfo:
-                        QOTDJsonContext.Default.QOTDServiceStartedEvent,
+                    payloadTypeInfo: QOTDJsonContext.Default.QOTDServiceStartedEvent,
                     occurredAt: DateTimeOffset.UtcNow,
                     correlationId: null,
                     cancellationToken: timeout.Token);
@@ -84,8 +76,7 @@ public sealed class QotdLifecycleService(
 
     public Task StoppingAsync(CancellationToken cancellationToken)
     {
-        logger.LogInformation(
-            "HappyQOTD TCP server stopping...");
+        logger.LogInformation("HappyQOTD TCP server stopping...");
 
         return Task.CompletedTask;
     }

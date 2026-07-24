@@ -104,7 +104,6 @@ public sealed class SqliteRepository : IQuoteRepository
     public SqliteRepository(string connectionString)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
-
         _connectionString = connectionString;
     }
 
@@ -192,9 +191,7 @@ public sealed class SqliteRepository : IQuoteRepository
         getCommand.CommandText = GetDailyQuoteSql;
         AddParameter(getCommand, "@SelectionDate", selectionDate);
 
-        return await QuerySingleOrDefaultQuoteAsync(
-            getCommand,
-            cancellationToken);
+        return await QuerySingleOrDefaultQuoteAsync(getCommand, cancellationToken);
     }
 
     public async Task<Quote?> GetRandomQuoteAsync(
@@ -206,9 +203,7 @@ public sealed class SqliteRepository : IQuoteRepository
         using var command = connection.CreateCommand();
         command.CommandText = RandomQuoteSql;
 
-        return await QuerySingleOrDefaultQuoteAsync(
-            command,
-            cancellationToken);
+        return await QuerySingleOrDefaultQuoteAsync(command, cancellationToken);
     }
 
     public async Task<Quote> InsertQuoteAsync(
@@ -226,9 +221,7 @@ public sealed class SqliteRepository : IQuoteRepository
         AddParameter(command, "@Author", NormalizeOptional(quote.Author));
         AddParameter(command, "@Source", NormalizeOptional(quote.Source));
 
-        return await QuerySingleQuoteAsync(
-            command,
-            cancellationToken);
+        return await QuerySingleQuoteAsync(command, cancellationToken);
     }
 
     private static string? NormalizeOptional(string? value)

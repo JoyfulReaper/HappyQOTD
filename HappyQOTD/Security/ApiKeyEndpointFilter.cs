@@ -28,15 +28,12 @@ public sealed class ApiKeyEndpointFilter(
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
-        if (!context.HttpContext.Request.Headers.TryGetValue(
-                HeaderName,
-                out var suppliedValues))
+        if (!context.HttpContext.Request.Headers.TryGetValue(HeaderName, out var suppliedValues))
         {
             return Results.Unauthorized();
         }
 
         var suppliedKey = suppliedValues.ToString();
-
         if (!KeysMatch(expectedKey, suppliedKey))
         {
             return Results.Unauthorized();

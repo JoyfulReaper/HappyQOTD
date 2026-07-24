@@ -42,37 +42,25 @@ public static class HappyQotdRouteExtensions
                 Predicate = registration => registration.Tags.Contains("ready")
             });
 
-        app.MapGet(
-                "/api/quotes/today",
-                HandleQuoteOfTheDayAsync)
+        app.MapGet("/api/quotes/today", HandleQuoteOfTheDayAsync)
             .RequireRateLimiting(QuoteReadRateLimitPolicy);
 
-        app.MapPost(
-                "/api/quotes",
-                HandleCreateQuoteAsync)
+        app.MapPost("/api/quotes", HandleCreateQuoteAsync)
             .AddEndpointFilter<ApiKeyEndpointFilter>()
             .RequireRateLimiting(QuoteWriteRateLimitPolicy);
 
-        app.MapPost(
-            "/api/quotes/batch",
-            HandleCreateBatchQuotesAsync)
+        app.MapPost("/api/quotes/batch", HandleCreateBatchQuotesAsync)
             .AddEndpointFilter<ApiKeyEndpointFilter>()
             .RequireRateLimiting(QuoteWriteRateLimitPolicy);
 
-        app.MapGet(
-                "/api/quotes/random",
-                HandleRandomQuoteAsync)
+        app.MapGet("/api/quotes/random", HandleRandomQuoteAsync)
             .RequireRateLimiting(QuoteReadRateLimitPolicy);
 
-        app.MapPut(
-            "/api/quotes/today",
-            HandleSetTodayQuoteAsync)
+        app.MapPut("/api/quotes/today", HandleSetTodayQuoteAsync)
             .AddEndpointFilter<ApiKeyEndpointFilter>()
             .RequireRateLimiting(QuoteWriteRateLimitPolicy);
 
-        app.MapDelete(
-                "/api/quotes/{id:int}",
-                HandleDeleteQuoteAsync)
+        app.MapDelete("/api/quotes/{id:int}", HandleDeleteQuoteAsync)
             .AddEndpointFilter<ApiKeyEndpointFilter>()
             .RequireRateLimiting(QuoteWriteRateLimitPolicy);
 
@@ -131,11 +119,7 @@ public static class HappyQotdRouteExtensions
         CancellationToken cancellationToken)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-
-        var updated = await repository.SetQuoteOfTheDayAsync(
-            today,
-            request.QuoteId,
-            cancellationToken);
+        var updated = await repository.SetQuoteOfTheDayAsync(today, request.QuoteId, cancellationToken);
 
         if (!updated)
         {
@@ -157,9 +141,7 @@ public static class HappyQotdRouteExtensions
         var correlationId = Guid.NewGuid().ToString("N");
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        var quote = await quoteRepository.GetQuoteOfTheDayAsync(
-            today,
-            cancellationToken);
+        var quote = await quoteRepository.GetQuoteOfTheDayAsync(today, cancellationToken);
 
         stopwatch.Stop();
         var remoteIp = GetRemoteIpAddress(httpContext);
@@ -200,9 +182,7 @@ public static class HappyQotdRouteExtensions
             return Results.ValidationProblem(errors);
         }
 
-        var created = await repository.InsertQuoteAsync(
-            request,
-            cancellationToken);
+        var created = await repository.InsertQuoteAsync(request, cancellationToken);
 
         stopwatch.Stop();
         var remote = GetRemoteIpAddress(httpContext);

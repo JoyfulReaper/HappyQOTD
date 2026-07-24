@@ -20,11 +20,9 @@ public sealed class QOTDConnectionHandler(
     ILogger<QOTDConnectionHandler> logger,
     IOptions<HappyQOTDOptions> options,
     IQuoteRepository quoteRepository,
-    IMissionControlClient missionControlClient)
-    : ITcpConnectionHandler
+    IMissionControlClient missionControlClient) : ITcpConnectionHandler
 {
-    private static readonly TimeSpan TelemetryPublishTimeout =
-        TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan TelemetryPublishTimeout = TimeSpan.FromSeconds(2); // TODO Make configurable
 
     public async ValueTask HandleAsync(
         TcpConnectionContext context,
@@ -47,10 +45,7 @@ public sealed class QOTDConnectionHandler(
         long connectionId = context.ConnectionId;
 
         context.RegisterAfterClose(afterCloseToken =>
-            PublishQotdServedTelemetryAsync(
-                connectionId,
-                result,
-                afterCloseToken));
+            PublishQotdServedTelemetryAsync(connectionId, result, afterCloseToken));
     }
 
     internal static async Task<QotdSessionResult?> ProcessAsync(
@@ -69,33 +64,23 @@ public sealed class QOTDConnectionHandler(
         bool responseCompleted = false;
         string remoteString = remote?.ToString() ?? "unknown";
 
-        bool isIgnoredTelemetrySource =
-            IsIgnoredTelemetrySource(
-                remote,
-                options.TelemetryIgnoredRemoteAddresses);
+        bool isIgnoredTelemetrySource = IsIgnoredTelemetrySource(remote, options.TelemetryIgnoredRemoteAddresses);
 
         try
         {
-            DateOnly today =
-                DateOnly.FromDateTime(DateTime.UtcNow);
+            DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-            Quote? quote =
-                await quoteRepository.GetQuoteOfTheDayAsync(
-                    today,
-                    cancellationToken);
+            Quote? quote = await quoteRepository.GetQuoteOfTheDayAsync(
+                today,
+                cancellationToken);
 
             string response = quote is null
                 ? "No quote is available today.\r\n"
                 : FormatQuote(quote);
 
-            byte[] responseBytes =
-                Encoding.UTF8.GetBytes(response);
+            byte[] responseBytes = Encoding.UTF8.GetBytes(response);
 
-            await stream.WriteAsync(
-                responseBytes,
-                cancellationToken);
-
-            await stream.FlushAsync(cancellationToken);
+            await stream.WriteAsync(responseBytes, cancellationToken);
 
             responseCompleted = true;
         }
@@ -161,10 +146,7 @@ public sealed class QOTDConnectionHandler(
         QotdSessionResult result,
         CancellationToken cancellationToken)
     {
-        using var timeout =
-            CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken);
-
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TelemetryPublishTimeout);
 
         try
@@ -176,8 +158,7 @@ public sealed class QOTDConnectionHandler(
                         result.Remote,
                         result.DurationMilliseconds,
                         result.Succeeded),
-                    payloadTypeInfo:
-                        QOTDJsonContext.Default.QOTDServedEvent,
+                    payloadTypeInfo: QOTDJsonContext.Default.QOTDServedEvent,
                     occurredAt: result.OccurredAt,
                     correlationId: result.CorrelationId,
                     cancellationToken: timeout.Token);
@@ -231,11 +212,8 @@ public sealed class QOTDConnectionHandler(
 
         return ignoredRemoteAddresses.Any(
             configuredAddress =>
-                IPAddress.TryParse(
-                    configuredAddress,
-                    out IPAddress? ignoredAddress) &&
-                remoteAddress.Equals(
-                    ignoredAddress.MapToIPv4()));
+                IPAddress.TryParse(configuredAddress, out IPAddress? ignoredAddress) &&
+                remoteAddress.Equals(ignoredAddress.MapToIPv4()));
     }
 
     internal static string FormatQuote(Quote quote)

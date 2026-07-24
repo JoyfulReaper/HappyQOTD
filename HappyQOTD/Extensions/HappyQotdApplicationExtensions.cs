@@ -53,21 +53,16 @@ public static class HappyQotdApplicationExtensions
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-            options.AddFixedWindowLimiter(
-                QuoteWriteRateLimitPolicy,
-                limiter =>
+            options.AddFixedWindowLimiter(QuoteWriteRateLimitPolicy, limiter =>
                 {
                     limiter.PermitLimit = 5;
                     limiter.Window = TimeSpan.FromMinutes(1);
                     limiter.QueueLimit = 0;
-                    limiter.QueueProcessingOrder =
-                        QueueProcessingOrder.OldestFirst;
+                    limiter.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
                     limiter.AutoReplenishment = true;
                 });
 
-            options.AddPolicy(
-                QuoteReadRateLimitPolicy,
-                httpContext =>
+            options.AddPolicy(QuoteReadRateLimitPolicy, httpContext =>
                 {
                     var remoteAddress = httpContext.Connection.RemoteIpAddress;
 
@@ -85,8 +80,7 @@ public static class HappyQotdApplicationExtensions
                             PermitLimit = 120,
                             Window = TimeSpan.FromMinutes(1),
                             QueueLimit = 0,
-                            QueueProcessingOrder =
-                                QueueProcessingOrder.OldestFirst,
+                            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                             AutoReplenishment = true
                         });
                 });
@@ -96,8 +90,7 @@ public static class HappyQotdApplicationExtensions
             .GetSection(HappyQOTDOptions.SectionName)
             .Get<HappyQOTDOptions>() ?? new HappyQOTDOptions();
 
-        services.Configure<HappyQOTDOptions>(
-            configuration.GetSection(HappyQOTDOptions.SectionName));
+        services.Configure<HappyQOTDOptions>(configuration.GetSection(HappyQOTDOptions.SectionName));
 
         var quoteConnectionString = string.IsNullOrWhiteSpace(qotdOptions.QuoteConnectionString)
             ? QuoteDatabase.Initialize()
