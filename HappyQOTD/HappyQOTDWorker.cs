@@ -11,10 +11,8 @@ using JoyfulReaperLib.JRNet;
 using JoyfulReaperLib.MissionControl;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 
 namespace HappyQOTD;
 
@@ -117,107 +115,35 @@ public class HappyQOTDWorker(
         }
     }
 
-    private async Task HandleClientAsync(long connectionId, TcpClient client, CancellationToken stoppingToken)
+    private async Task HandleClientAsync(
+        long connectionId,
+        TcpClient client,
+        CancellationToken stoppingToken)
     {
-        var occurredAt = DateTimeOffset.UtcNow;
-        var stopwatch = Stopwatch.StartNew();
-        var correlationId = Guid.NewGuid().ToString("N");
+        QotdSessionResult? telemetry = null;
 
-        bool responseCompleted = false;
-        EndPoint? remote = null;
-        bool isIgnoredTelemetrySource = false;
-        QotdServedTelemetryResult? telemetry = null;
-
-        try
+        using (client)
         {
-            using (client)
+            try
             {
                 client.NoDelay = true;
-                remote = client.Client.RemoteEndPoint;
 
-                isIgnoredTelemetrySource = IsIgnoredTelemetrySource(remote);
+                await using NetworkStream stream =
+                    client.GetStream();
 
-                try
-                {
-                    DateOnly today =
-                        DateOnly.FromDateTime(
-                            DateTime.UtcNow);
-
-                    Quote? quote =
-                        await quoteRepository.GetQuoteOfTheDayAsync(
-                            today,
-                            stoppingToken);
-
-                    string response = quote is null
-                        ? "No quote is available today.\r\n"
-                        : FormatQuote(quote);
-
-                    byte[] responseBytes =
-                        Encoding.UTF8.GetBytes(response);
-
-                    await using NetworkStream stream = client.GetStream();
-                    await stream.WriteAsync(responseBytes, stoppingToken);
-                    await stream.FlushAsync(stoppingToken);
-                    responseCompleted = true;
-                }
-                catch (OperationCanceledException)
-                {
-                    logger.LogWarning(
-                        "Connection {ConnectionId} from {Remote} timed out.",
-                        connectionId,
-                        remote);
-                }
-                catch (InvalidDataException exception)
-                {
-                    logger.LogWarning(
-                        exception,
-                        "Rejected malformed request on connection {ConnectionId} from {Remote}.",
-                        connectionId,
-                        remote);
-                }
-                catch (IOException exception)
-                {
-                    logger.LogDebug(
-                        exception,
-                        "Connection {ConnectionId} from {Remote} ended early.",
-                        connectionId,
-                        remote);
-                }
-                catch (SocketException exception)
-                {
-                    logger.LogDebug(
-                        exception,
-                        "Socket error on connection {ConnectionId} from {Remote}.",
-                        connectionId,
-                        remote);
-                }
-                catch (Exception exception)
-                {
-                    logger.LogError(
-                        exception,
-                        "Unhandled error on connection {ConnectionId} from {Remote}.",
-                        connectionId,
-                        remote);
-                }
-
-                stopwatch.Stop();
+                telemetry = await QotdConnectionHandler.ProcessAsync(
+                    connectionId,
+                    stream,
+                    client.Client.RemoteEndPoint,
+                    quoteRepository,
+                    options.Value,
+                    logger,
+                    stoppingToken);
             }
-
-            if (isIgnoredTelemetrySource)
+            finally
             {
-                return;
+                _connectionLimit.Release();
             }
-
-            telemetry = new QotdServedTelemetryResult(
-                remote?.ToString() ?? "unknown",
-                stopwatch.ElapsedMilliseconds,
-                responseCompleted,
-                occurredAt,
-                correlationId);
-        }
-        finally
-        {
-            _connectionLimit.Release();
         }
 
         if (telemetry is not null)
@@ -229,7 +155,7 @@ public class HappyQOTDWorker(
     }
 
     private async Task PublishQotdServedTelemetryAsync(
-        QotdServedTelemetryResult telemetry,
+        QotdSessionResult telemetry,
         CancellationToken stoppingToken)
     {
         using CancellationTokenSource timeoutTokenSource =
@@ -324,44 +250,6 @@ public class HappyQOTDWorker(
         }
     }
 
-    private bool IsIgnoredTelemetrySource(
-        EndPoint? remote)
-    {
-        IPAddress? remoteAddress =
-            (remote as IPEndPoint)?
-                .Address
-                .MapToIPv4();
-
-        if (remoteAddress is null)
-        {
-            return false;
-        }
-
-        return options.Value
-            .TelemetryIgnoredRemoteAddresses
-            .Any(configuredAddress =>
-                IPAddress.TryParse(
-                    configuredAddress,
-                    out IPAddress? ignoredAddress) &&
-                remoteAddress.Equals(
-                    ignoredAddress.MapToIPv4()));
-    }
-
-    private static string FormatQuote(Quote quote)
-    {
-        var attribution = quote.Author;
-
-        if (!string.IsNullOrWhiteSpace(quote.Source))
-        {
-            attribution = string.IsNullOrWhiteSpace(attribution)
-                ? quote.Source
-                : $"{attribution}, {quote.Source}";
-        }
-
-        return string.IsNullOrWhiteSpace(attribution)
-            ? $"{quote.Text}\r\n"
-            : $"{quote.Text}\r\n-- {attribution}\r\n";
-    }
 
     public override Task StopAsync(CancellationToken cancellationToken)
     {
@@ -371,11 +259,4 @@ public class HappyQOTDWorker(
 
         return base.StopAsync(cancellationToken);
     }
-
-    private sealed record QotdServedTelemetryResult(
-        string Remote,
-        long DurationMilliseconds,
-        bool Succeeded,
-        DateTimeOffset OccurredAt,
-        string CorrelationId);
 }
