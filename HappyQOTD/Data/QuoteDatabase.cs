@@ -1,4 +1,10 @@
-﻿using JoyfulReaperLib.Sqlite;
+﻿/*
+ * Happy QOTD Service
+ * Copyright (c) 2026 Kyle Givler
+ * Licensed under the MIT License.
+ */
+
+using JoyfulReaperLib.Sqlite;
 
 namespace HappyQOTD.Data;
 
@@ -95,8 +101,6 @@ public static class QuoteDatabase
 
     public static string Initialize()
     {
-        return SqliteDatabaseInitializer.Initialize(
-            "happyqotd.db",
-            SchemaSql);
+        return SqliteDatabaseInitializer.Initialize("happyqotd.db", SchemaSql);
     }
 }

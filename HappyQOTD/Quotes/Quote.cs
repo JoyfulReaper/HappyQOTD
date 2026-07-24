@@ -1,4 +1,10 @@
-﻿namespace HappyQOTD.Quotes;
+﻿/*
+ * Happy QOTD Service
+ * Copyright (c) 2026 Kyle Givler
+ * Licensed under the MIT License.
+ */
+
+namespace HappyQOTD.Quotes;
 
 public sealed record Quote(
     long Id,

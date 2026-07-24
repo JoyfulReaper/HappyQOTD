@@ -1,4 +1,10 @@
-﻿using HappyQOTD.Quotes;
+﻿/*
+ * Happy QOTD Service
+ * Copyright (c) 2026 Kyle Givler
+ * Licensed under the MIT License.
+ */
+
+using HappyQOTD.Quotes;
 using System.Text.Json.Serialization;
 
 namespace HappyQOTD.Events;
@@ -17,5 +23,4 @@ namespace HappyQOTD.Events;
 [JsonSerializable(typeof(QuoteAddedEvent))]
 [JsonSerializable(typeof(RandomQuoteServedEvent))]
 [JsonSerializable(typeof(QOTDServiceStartedEvent))]
-internal sealed partial class QOTDJsonContext
-    : JsonSerializerContext;
+internal sealed partial class QOTDJsonContext : JsonSerializerContext;

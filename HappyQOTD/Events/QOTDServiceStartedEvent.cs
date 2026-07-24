@@ -1,7 +1,12 @@
-﻿namespace HappyQOTD.Events;
+﻿/*
+ * Happy QOTD Service
+ * Copyright (c) 2026 Kyle Givler
+ * Licensed under the MIT License.
+ */
 
-public sealed record QOTDServiceStartedEvent(
-    string ListenAddress)
+namespace HappyQOTD.Events;
+
+public sealed record QOTDServiceStartedEvent(string ListenAddress)
 {
     public const string EventName = "happyqotd.service.started";
 }

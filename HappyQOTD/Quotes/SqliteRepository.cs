@@ -1,4 +1,9 @@
-using System.Reflection.Metadata;
+/*
+ * Happy QOTD Service
+ * Copyright (c) 2026 Kyle Givler
+ * Licensed under the MIT License.
+ */
+
 using Microsoft.Data.Sqlite;
 
 namespace HappyQOTD.Quotes;
@@ -99,7 +104,6 @@ public sealed class SqliteRepository : IQuoteRepository
     public SqliteRepository(string connectionString)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
-
         _connectionString = connectionString;
     }
 
@@ -172,9 +176,7 @@ public sealed class SqliteRepository : IQuoteRepository
         DateOnly date,
         CancellationToken cancellationToken = default)
     {
-        await using var connection =
-            new SqliteConnection(_connectionString);
-
+        await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
 
         var selectionDate = date.ToString("yyyy-MM-dd");
@@ -189,25 +191,19 @@ public sealed class SqliteRepository : IQuoteRepository
         getCommand.CommandText = GetDailyQuoteSql;
         AddParameter(getCommand, "@SelectionDate", selectionDate);
 
-        return await QuerySingleOrDefaultQuoteAsync(
-            getCommand,
-            cancellationToken);
+        return await QuerySingleOrDefaultQuoteAsync(getCommand, cancellationToken);
     }
 
     public async Task<Quote?> GetRandomQuoteAsync(
         CancellationToken cancellationToken = default)
     {
-        await using var connection =
-            new SqliteConnection(_connectionString);
-
+        await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
 
         using var command = connection.CreateCommand();
         command.CommandText = RandomQuoteSql;
 
-        return await QuerySingleOrDefaultQuoteAsync(
-            command,
-            cancellationToken);
+        return await QuerySingleOrDefaultQuoteAsync(command, cancellationToken);
     }
 
     public async Task<Quote> InsertQuoteAsync(
@@ -216,9 +212,7 @@ public sealed class SqliteRepository : IQuoteRepository
     {
         ArgumentNullException.ThrowIfNull(quote);
 
-        await using var connection =
-            new SqliteConnection(_connectionString);
-
+        await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
 
         using var command = connection.CreateCommand();
@@ -227,9 +221,7 @@ public sealed class SqliteRepository : IQuoteRepository
         AddParameter(command, "@Author", NormalizeOptional(quote.Author));
         AddParameter(command, "@Source", NormalizeOptional(quote.Source));
 
-        return await QuerySingleQuoteAsync(
-            command,
-            cancellationToken);
+        return await QuerySingleQuoteAsync(command, cancellationToken);
     }
 
     private static string? NormalizeOptional(string? value)
@@ -267,8 +259,7 @@ public sealed class SqliteRepository : IQuoteRepository
 
         if (await reader.ReadAsync(cancellationToken))
         {
-            throw new InvalidOperationException(
-                "Sequence contains more than one element.");
+            throw new InvalidOperationException("Sequence contains more than one element.");
         }
 
         return quote;
@@ -282,16 +273,14 @@ public sealed class SqliteRepository : IQuoteRepository
 
         if (!await reader.ReadAsync(cancellationToken))
         {
-            throw new InvalidOperationException(
-                "Sequence contains no elements.");
+            throw new InvalidOperationException("Sequence contains no elements.");
         }
 
         var quote = MapQuote(reader);
 
         if (await reader.ReadAsync(cancellationToken))
         {
-            throw new InvalidOperationException(
-                "Sequence contains more than one element.");
+            throw new InvalidOperationException("Sequence contains more than one element.");
         }
 
         return quote;

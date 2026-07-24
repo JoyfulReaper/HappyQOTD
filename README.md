@@ -2,28 +2,31 @@
 
 HappyQOTD serves a daily quote through the classic Quote of the Day TCP protocol and an ASP.NET Core HTTP API. The daily quote is selected by UTC date and persisted in SQLite, so the TCP and HTTP services return the same quote.
 
+> [!NOTE]
+> The included seed database contains only a small set of SFW sample quotes. It is separate from the quote collection used by the public instance.
+
 ## Services
 
-- TCP Quote of the Day server on port `17`
-- ASP.NET Core Minimal API
-- SQLite quote storage
-- Optional Mission Control telemetry
+* TCP Quote of the Day server on port `17`
+* ASP.NET Core Minimal API
+* SQLite quote storage
+* Optional Mission Control telemetry
 
 ## API
 
 The local development URL is `http://localhost:5269`. The production deployment in the VPS compose stack listens on `http://127.0.0.1:5193`.
 
-| Method | Path | Authentication | Description |
-| --- | --- | --- | --- |
-| `GET` | `/` | None | Returns `HappyQOTD`. |
-| `GET` | `/health/live` | None | Liveness check. |
-| `GET` | `/health/ready` | None | Readiness check. Verifies that SQLite can be opened and queried. |
-| `GET` | `/api/quotes/today` | None | Returns the quote selected for the current UTC date. Returns `404` when no quote is available. |
-| `GET` | `/api/quotes/random` | None | Returns a random active quote. Returns `404` when no quote is available. |
-| `POST` | `/api/quotes` | `X-HappyQOTD-Key` | Creates one quote. |
-| `POST` | `/api/quotes/batch` | `X-HappyQOTD-Key` | Creates multiple quotes. |
-| `PUT` | `/api/quotes/today` | `X-HappyQOTD-Key` | Sets the current UTC day's quote. |
-| `DELETE` | `/api/quotes/{id}` | `X-HappyQOTD-Key` | Deletes a quote by numeric ID. |
+| Method   | Path                 | Authentication    | Description                                                                                    |
+| -------- | -------------------- | ----------------- | ---------------------------------------------------------------------------------------------- |
+| `GET`    | `/`                  | None              | Returns `HappyQOTD`.                                                                           |
+| `GET`    | `/health/live`       | None              | Liveness check.                                                                                |
+| `GET`    | `/health/ready`      | None              | Readiness check. Verifies that SQLite can be opened and queried.                               |
+| `GET`    | `/api/quotes/today`  | None              | Returns the quote selected for the current UTC date. Returns `404` when no quote is available. |
+| `GET`    | `/api/quotes/random` | None              | Returns a random active quote. Returns `404` when no quote is available.                       |
+| `POST`   | `/api/quotes`        | `X-HappyQOTD-Key` | Creates one quote.                                                                             |
+| `POST`   | `/api/quotes/batch`  | `X-HappyQOTD-Key` | Creates multiple quotes.                                                                       |
+| `PUT`    | `/api/quotes/today`  | `X-HappyQOTD-Key` | Sets the current UTC day's quote.                                                              |
+| `DELETE` | `/api/quotes/{id}`   | `X-HappyQOTD-Key` | Deletes a quote by numeric ID.                                                                 |
 
 Write requests return `503` when no admin key is configured and `401` when the supplied key is missing or incorrect. Write endpoints are limited to 5 requests per minute. Read endpoints are limited to 120 requests per minute per client, except loopback clients.
 
@@ -41,9 +44,9 @@ Write requests return `503` when no admin key is configured and `401` when the s
 
 Quote validation rules:
 
-- `text` is required and may contain up to 1,000 characters.
-- `author` may contain up to 200 characters.
-- `source` may contain up to 300 characters.
+* `text` is required and may contain up to 1,000 characters.
+* `author` may contain up to 200 characters.
+* `source` may contain up to 300 characters.
 
 `POST /api/quotes/batch` accepts an array of the same request objects:
 
@@ -113,11 +116,16 @@ The TCP server sends the current quote and closes the connection:
 nc 127.0.0.1 17
 ```
 
-For a remote deployment:
+### Try the public instance
+
+My live deployment can be queried directly:
 
 ```bash
 nc qotd.kgivler.com 17
 ```
+
+> [!WARNING]
+> This instance uses my personal, unfiltered quote collection. Most quotes are programming-related, but some contain strong or obscene language or discuss suicide and other sensitive subjects.
 
 The TCP listener uses `QOTD:ListenAddress` and `QOTD:Port`. Binding to port `17` may require `NET_BIND_SERVICE` or elevated privileges on Linux.
 
@@ -129,19 +137,20 @@ The quote of the day is keyed by the current UTC date. The repository selects an
 
 The main configuration sections are:
 
-| Setting | Description |
-| --- | --- |
-| `QotdSecurity:AdminApiKey` | API key required by quote write endpoints. |
-| `QOTD:ListenAddress` | TCP listener address. |
-| `QOTD:Port` | TCP listener port. Defaults to `17`. |
-| `QOTD:ApiBaseUrl` | Configured HTTP API base URL for integrations. |
-| `QOTD:MaxConcurrentConnections` | Maximum simultaneous TCP connections. |
-| `QOTD:RequestTimeoutSeconds` | Configured request-timeout value reserved for the TCP service. |
-| `QOTD:TelemetryIgnoredRemoteAddresses` | TCP client addresses excluded from served-quote telemetry. |
-| `MissionControl:Enabled` | Enables Mission Control telemetry. |
-| `MissionControl:BaseUrl` | Mission Control Gateway base URL. |
-| `MissionControl:ApiKey` | Mission Control source API key. |
-| `MissionControl:TimeoutMilliseconds` | Mission Control request timeout. |
+| Setting                                | Description                                                    |
+| -------------------------------------- | -------------------------------------------------------------- |
+| `QotdSecurity:AdminApiKey`             | API key required by quote write endpoints.                     |
+| `QOTD:ListenAddress`                   | TCP listener address.                                          |
+| `QOTD:Port`                            | TCP listener port. Defaults to `17`.                           |
+| `QOTD:EnableTcpServer`                 | Enables the shared hosted TCP server.                           |
+| `QOTD:ApiBaseUrl`                      | Configured HTTP API base URL for integrations.                 |
+| `QOTD:MaxConcurrentConnections`        | Maximum simultaneous TCP connections.                          |
+| `QOTD:RequestTimeoutSeconds`           | Configured request-timeout value reserved for the TCP service. |
+| `QOTD:TelemetryIgnoredRemoteAddresses` | TCP client addresses excluded from served-quote telemetry.     |
+| `MissionControl:Enabled`               | Enables Mission Control telemetry.                             |
+| `MissionControl:BaseUrl`               | Mission Control Gateway base URL.                              |
+| `MissionControl:ApiKey`                | Mission Control source API key.                                |
+| `MissionControl:TimeoutMilliseconds`   | Mission Control request timeout.                               |
 
 Environment variables use double underscores, for example:
 
@@ -149,6 +158,7 @@ Environment variables use double underscores, for example:
 QotdSecurity__AdminApiKey
 QOTD__ListenAddress
 QOTD__Port
+QOTD__EnableTcpServer
 QOTD__ApiBaseUrl
 QOTD__MaxConcurrentConnections
 QOTD__RequestTimeoutSeconds
@@ -165,8 +175,8 @@ Mission Control is disabled by default in `appsettings.json`. When enabled, its 
 
 Requirements:
 
-- .NET 10 SDK
-- Local JoyfulReaperLib packages available through `NuGet.config`
+* .NET 10 SDK
+* Local JoyfulReaperLib packages available through `NuGet.config`
 
 Restore and run:
 
@@ -227,25 +237,25 @@ cap_add:
 
 When enabled, HappyQOTD publishes these event types:
 
-- `happyqotd.service.started`
-- `happyqotd.qotd.served`
-- `happyqotd.api.qotd.served`
-- `happyqotd.api.quote.added`
-- `happyqotd.api.quotes.batch_added`
-- `happyqotd.api.randomquote.served`
-- `happyqotd.api.quote.deleted`
+* `happyqotd.service.started`
+* `happyqotd.qotd.served`
+* `happyqotd.api.qotd.served`
+* `happyqotd.api.quote.added`
+* `happyqotd.api.quotes.batch_added`
+* `happyqotd.api.randomquote.served`
+* `happyqotd.api.quote.deleted`
 
-Telemetry failures are logged and do not normally prevent the HTTP API or TCP service from serving quotes. The startup event is attempted once when the worker starts; restarting HappyQOTD retries it.
+Telemetry failures are logged and do not normally prevent the HTTP API or TCP service from serving quotes. The startup event is attempted once when the shared hosted TCP server starts; restarting HappyQOTD retries it.
 
 ## Code Layout
 
-- [`Program.cs`](./HappyQOTD/Program.cs) bootstraps the application.
-- [`Extensions/HappyQotdApplicationExtensions.cs`](./HappyQOTD/Extensions/HappyQotdApplicationExtensions.cs) registers services and middleware.
-- [`Routes/HappyQotdRouteExtensions.cs`](./HappyQOTD/Routes/HappyQotdRouteExtensions.cs) maps the HTTP endpoints and handlers.
-- [`HappyQOTDWorker.cs`](./HappyQOTD/HappyQOTD/HappyQOTDWorker.cs) runs the TCP listener.
-- [`Data/QuoteDatabase.cs`](./HappyQOTD/HappyQOTD/Data/QuoteDatabase.cs) initializes the SQLite database.
-- [`Quotes/SqliteRepository.cs`](./HappyQOTD/HappyQOTD/Quotes/SqliteRepository.cs) implements quote persistence.
-- [`Events/QOTDJsonContext.cs`](./HappyQOTD/HappyQOTD/Events/QOTDJsonContext.cs) provides source-generated JSON metadata.
+* [`Program.cs`](./HappyQOTD/Program.cs) bootstraps the application.
+* [`Extensions/HappyQotdApplicationExtensions.cs`](./HappyQOTD/Extensions/HappyQotdApplicationExtensions.cs) registers services and middleware.
+* [`Routes/HappyQotdRouteExtensions.cs`](./HappyQOTD/Routes/HappyQotdRouteExtensions.cs) maps the HTTP endpoints and handlers.
+* [`QOTDConnectionHandler.cs`](./HappyQOTD/QOTDConnectionHandler.cs) handles connections from the shared hosted TCP server.
+* [`Data/QuoteDatabase.cs`](./HappyQOTD/Data/QuoteDatabase.cs) initializes the SQLite database.
+* [`Quotes/SqliteRepository.cs`](./HappyQOTD/Quotes/SqliteRepository.cs) implements quote persistence.
+* [`Events/QOTDJsonContext.cs`](./HappyQOTD/Events/QOTDJsonContext.cs) provides source-generated JSON metadata.
 
 ## License
 
