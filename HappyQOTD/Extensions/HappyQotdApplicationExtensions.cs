@@ -9,6 +9,7 @@ using HappyQOTD.Events;
 using HappyQOTD.Quotes;
 using HappyQOTD.Security;
 using JoyfulReaperLib.MissionControl;
+using JoyfulReaperLib.TcpServer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -123,7 +124,8 @@ public static class HappyQotdApplicationExtensions
         services.AddScoped<ApiKeyEndpointFilter>();
         if (qotdOptions.EnableTcpServer)
         {
-            services.AddHostedService<HappyQOTDWorker>();
+            services.AddTcpServer<QotdConnectionHandler, HappyQOTDOptions>();
+            services.AddHostedService<QotdLifecycleService>();
         }
         services.AddProblemDetails();
 
