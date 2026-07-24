@@ -5,13 +5,22 @@ using HappyQOTD.Events;
 using HappyQOTD.Quotes;
 using HappyQOTD.Tests.TestInfrastructure;
 using JoyfulReaperLib.MissionControl;
-using Microsoft.Extensions.Logging.Abstractions;
+using JoyfulReaperLib.TcpServer;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace HappyQOTD.Tests;
 
 public sealed class TcpQotdServerTests
 {
+    private static readonly TimeSpan HostTimeout =
+        TimeSpan.FromSeconds(5);
+
+    private static readonly TimeSpan ShortTimeout =
+        TimeSpan.FromSeconds(2);
+
     [Fact]
     public async Task ConnectingReturnsCurrentQuoteWithAuthorAndSource()
     {
@@ -67,9 +76,9 @@ public sealed class TcpQotdServerTests
         var buffer = new byte[128];
 
         var firstRead = await stream.ReadAsync(buffer).AsTask().WaitAsync(
-            TimeSpan.FromSeconds(2));
+            ShortTimeout);
         var secondRead = await stream.ReadAsync(buffer).AsTask().WaitAsync(
-            TimeSpan.FromSeconds(2));
+            ShortTimeout);
 
         Assert.True(firstRead > 0);
         Assert.Equal(0, secondRead);
@@ -89,7 +98,7 @@ public sealed class TcpQotdServerTests
     }
 
     [Fact]
-    public async Task MaximumConcurrentConnectionLimitIsRespected()
+    public async Task ConnectionSlotIsReleasedBeforeTelemetryCompletes()
     {
         var missionControl = new BlockingServedMissionControlClient();
         await using var server = await TcpServerHarness.StartAsync(
@@ -97,14 +106,57 @@ public sealed class TcpQotdServerTests
             missionControl,
             maxConcurrentConnections: 1);
 
-        var firstRead = ReadQuoteAsync(server.Port);
-        Assert.Equal("Limited\r\n", await firstRead);
-        await missionControl.WaitForStartedCountAsync(1, TimeSpan.FromSeconds(2));
+        try
+        {
+            Assert.Equal("Limited\r\n", await ReadQuoteAsync(server.Port));
+            await missionControl.WaitForStartedCountAsync(1, ShortTimeout);
 
-        var secondRead = ReadQuoteAsync(server.Port);
+            Task<string> secondRead = ReadQuoteAsync(server.Port);
 
-        missionControl.Release();
-        Assert.Equal("Limited\r\n", await secondRead.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.Equal(
+                "Limited\r\n",
+                await secondRead.WaitAsync(ShortTimeout));
+            await missionControl.WaitForStartedCountAsync(2, ShortTimeout);
+        }
+        finally
+        {
+            missionControl.Release();
+        }
+    }
+
+    [Fact]
+    public async Task SharedHostWaitsForConnectionSlotWhileQuoteLookupRuns()
+    {
+        var repository = new BlockingQuoteRepository(
+            new Quote(1, "Lookup limited"));
+        await using var server = await TcpServerHarness.StartAsync(
+            repository,
+            maxConcurrentConnections: 1);
+
+        try
+        {
+            Task<string> firstRead = ReadQuoteAsync(server.Port);
+            await repository.WaitForStartedCountAsync(1, ShortTimeout);
+
+            Task<string> secondRead = ReadQuoteAsync(server.Port);
+
+            await Task.Delay(TimeSpan.FromMilliseconds(250));
+            Assert.False(secondRead.IsCompleted);
+            Assert.Equal(1, repository.StartedCount);
+
+            repository.Release();
+
+            string[] responses = await Task.WhenAll(
+                firstRead,
+                secondRead).WaitAsync(ShortTimeout);
+            Assert.All(
+                responses,
+                response => Assert.Equal("Lookup limited\r\n", response));
+        }
+        finally
+        {
+            repository.Release();
+        }
     }
 
     [Fact]
@@ -131,7 +183,7 @@ public sealed class TcpQotdServerTests
         using var client = new TcpClient();
         await client.ConnectAsync(IPAddress.Loopback, server.Port);
 
-        await server.StopAsync(TimeSpan.FromSeconds(2));
+        await server.StopAsync(HostTimeout);
 
         Assert.True(server.Stopped);
     }
@@ -146,6 +198,9 @@ public sealed class TcpQotdServerTests
             missionControl);
 
         var response = await ReadQuoteAsync(server.Port);
+        await missionControl.WaitForEventAsync(
+            QOTDServedEvent.EventName,
+            ShortTimeout);
 
         Assert.Equal("Still served\r\n", response);
     }
@@ -161,6 +216,7 @@ public sealed class TcpQotdServerTests
         missionControl.Clear();
 
         _ = await ReadQuoteAsync(server.Port);
+        await Task.Delay(TimeSpan.FromMilliseconds(250));
 
         Assert.DoesNotContain(
             missionControl.Calls,
@@ -178,9 +234,9 @@ public sealed class TcpQotdServerTests
 
         _ = await ReadQuoteAsync(server.Port);
 
-        var call = Assert.Single(
-            missionControl.Calls,
-            call => call.EventType == QOTDServedEvent.EventName);
+        MissionControlCall call = await missionControl.WaitForEventAsync(
+            QOTDServedEvent.EventName,
+            ShortTimeout);
         Assert.False(string.IsNullOrWhiteSpace(call.CorrelationId));
         var payload = Assert.IsType<QOTDServedEvent>(call.Payload);
         Assert.True(payload.Succeeded);
@@ -191,13 +247,36 @@ public sealed class TcpQotdServerTests
     [Fact]
     public async Task MissionControlFalseReturnDoesNotPreventQuoteResponse()
     {
+        var missionControl = new RecordingMissionControlClient(
+            returnValue: false);
         await using var server = await TcpServerHarness.StartAsync(
             new Quote(1, "False return"),
-            new RecordingMissionControlClient(returnValue: false));
+            missionControl);
+        missionControl.Clear();
 
         var response = await ReadQuoteAsync(server.Port);
+        await missionControl.WaitForEventAsync(
+            QOTDServedEvent.EventName,
+            ShortTimeout);
 
         Assert.Equal("False return\r\n", response);
+    }
+
+    [Fact]
+    public async Task StartupTelemetryContainsExpectedValues()
+    {
+        var missionControl = new RecordingMissionControlClient();
+
+        await using var server = await TcpServerHarness.StartAsync(
+            new Quote(1, "Startup telemetry"),
+            missionControl);
+
+        MissionControlCall call = Assert.Single(
+            missionControl.Calls,
+            call => call.EventType == QOTDServiceStartedEvent.EventName);
+        Assert.Null(call.CorrelationId);
+        var payload = Assert.IsType<QOTDServiceStartedEvent>(call.Payload);
+        Assert.Equal($"127.0.0.1:{server.Port}", payload.ListenAddress);
     }
 
     [Fact]
@@ -209,10 +288,11 @@ public sealed class TcpQotdServerTests
             new Quote(1, "Startup timeout"),
             missionControl);
 
-        var response = await ReadQuoteAsync(server.Port, TimeSpan.FromSeconds(5));
+        var response = await ReadQuoteAsync(server.Port, HostTimeout);
 
         Assert.Equal("Startup timeout\r\n", response);
-        Assert.Contains(
+        Assert.Equal(1, missionControl.CanceledCount);
+        Assert.Single(
             missionControl.Calls,
             call => call.EventType == QOTDServiceStartedEvent.EventName);
     }
@@ -251,13 +331,13 @@ public sealed class TcpQotdServerTests
             missionControl);
 
         var response = await ReadQuoteAsync(server.Port);
-        await missionControl.WaitForStartedCountAsync(1, TimeSpan.FromSeconds(2));
+        await missionControl.WaitForStartedCountAsync(1, ShortTimeout);
 
         Assert.Equal("EOF\r\n", response);
         Assert.Equal(0, missionControl.FinishedCount);
 
         missionControl.Release();
-        await missionControl.WaitForFinishedCountAsync(1, TimeSpan.FromSeconds(2));
+        await missionControl.WaitForFinishedCountAsync(1, ShortTimeout);
     }
 
     [Fact]
@@ -270,13 +350,13 @@ public sealed class TcpQotdServerTests
             missionControl);
 
         var firstResponse = await ReadQuoteAsync(server.Port);
-        await missionControl.WaitForStartedCountAsync(1, TimeSpan.FromSeconds(2));
+        await missionControl.WaitForStartedCountAsync(1, ShortTimeout);
 
         missionControl.Release();
-        await missionControl.WaitForFinishedCountAsync(1, TimeSpan.FromSeconds(2));
+        await missionControl.WaitForFinishedCountAsync(1, ShortTimeout);
 
         var secondResponse = await ReadQuoteAsync(server.Port);
-        await missionControl.WaitForStartedCountAsync(2, TimeSpan.FromSeconds(2));
+        await missionControl.WaitForStartedCountAsync(2, ShortTimeout);
 
         Assert.Equal("Still alive\r\n", firstResponse);
         Assert.Equal("Still alive\r\n", secondResponse);
@@ -292,8 +372,8 @@ public sealed class TcpQotdServerTests
             maxConcurrentConnections: 1);
 
         var response = await ReadQuoteAsync(server.Port);
-        await missionControl.WaitForStartedCountAsync(1, TimeSpan.FromSeconds(2));
-        await missionControl.WaitForFinishedCountAsync(1, TimeSpan.FromSeconds(5));
+        await missionControl.WaitForStartedCountAsync(1, ShortTimeout);
+        await missionControl.WaitForFinishedCountAsync(1, HostTimeout);
 
         Assert.Equal("Timeout\r\n", response);
         Assert.Equal(1, missionControl.CanceledCount);
@@ -308,7 +388,7 @@ public sealed class TcpQotdServerTests
 
         using var client = new TcpClient();
         await client.ConnectAsync(IPAddress.Loopback, server.Port).WaitAsync(
-            TimeSpan.FromSeconds(2));
+            ShortTimeout);
         client.Dispose();
 
         var response = await ReadQuoteAsync(server.Port);
@@ -317,7 +397,7 @@ public sealed class TcpQotdServerTests
     }
 
     private static Task<string> ReadQuoteAsync(int port) =>
-        ReadQuoteAsync(port, TimeSpan.FromSeconds(2));
+        ReadQuoteAsync(port, ShortTimeout);
 
     private static async Task<string> ReadQuoteAsync(
         int port,
@@ -325,23 +405,44 @@ public sealed class TcpQotdServerTests
     {
         using var client = new TcpClient();
         await client.ConnectAsync(IPAddress.Loopback, port).WaitAsync(
-            TimeSpan.FromSeconds(2));
+            ShortTimeout);
 
         await using var stream = client.GetStream();
         using var reader = new StreamReader(stream);
         return await reader.ReadToEndAsync().WaitAsync(timeout);
     }
 
+    private static int GetAvailablePort()
+    {
+        var listener = new TcpListener(
+            IPAddress.Loopback,
+            0);
+
+        listener.Start();
+
+        try
+        {
+            return ((IPEndPoint)listener.LocalEndpoint).Port;
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
     private sealed class TcpServerHarness : IAsyncDisposable
     {
-        private readonly HappyQOTDWorker _worker;
+        private readonly IHost _host;
 
-        private TcpServerHarness(HappyQOTDWorker worker)
+        private TcpServerHarness(
+            IHost host,
+            int port)
         {
-            _worker = worker;
+            _host = host;
+            Port = port;
         }
 
-        public int Port => _worker.BoundPort;
+        public int Port { get; }
         public bool Stopped { get; private set; }
 
         public static Task<TcpServerHarness> StartAsync(
@@ -356,36 +457,60 @@ public sealed class TcpQotdServerTests
                 ignoredTelemetryAddresses);
 
         public static async Task<TcpServerHarness> StartAsync(
-            FakeQuoteRepository repository,
+            IQuoteRepository repository,
             IMissionControlClient? missionControl = null,
             int maxConcurrentConnections = 4,
             string[]? ignoredTelemetryAddresses = null)
         {
-            var worker = new HappyQOTDWorker(
-                NullLogger<HappyQOTDWorker>.Instance,
-                Options.Create(new HappyQOTDOptions
-                {
-                    ListenAddress = "127.0.0.1",
-                    Port = 0,
-                    MaxConcurrentConnections = maxConcurrentConnections,
-                    TelemetryIgnoredRemoteAddresses = ignoredTelemetryAddresses ?? []
-                }),
-                repository,
-                missionControl ?? new RecordingMissionControlClient());
-
-            var harness = new TcpServerHarness(worker);
-            await worker.StartAsync(CancellationToken.None);
-            await harness.WaitForPortAsync();
-            return harness;
-        }
-
-        private async Task WaitForPortAsync()
-        {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            while (Port == 0)
+            int port = GetAvailablePort();
+            var missionControlClient =
+                missionControl ?? new RecordingMissionControlClient();
+            var options = new HappyQOTDOptions
             {
-                timeout.Token.ThrowIfCancellationRequested();
-                await Task.Delay(10, timeout.Token);
+                ListenAddress = "127.0.0.1",
+                Port = port,
+                EnableTcpServer = true,
+                MaxConcurrentConnections =
+                    maxConcurrentConnections,
+                RequestTimeoutSeconds = 15,
+                TelemetryIgnoredRemoteAddresses =
+                    ignoredTelemetryAddresses ?? []
+            };
+
+            IHost host = Host.CreateDefaultBuilder()
+                .ConfigureLogging(logging =>
+                    logging.ClearProviders())
+                .ConfigureServices(services =>
+                {
+                    services.AddSingleton<IQuoteRepository>(
+                        repository);
+
+                    services.AddSingleton<IMissionControlClient>(
+                        missionControlClient);
+
+                    services.AddSingleton<IOptions<HappyQOTDOptions>>(
+                        Options.Create(options));
+
+                    services.AddTcpServer<
+                        QotdConnectionHandler,
+                        HappyQOTDOptions>();
+
+                    services.AddHostedService<QotdLifecycleService>();
+                })
+                .Build();
+
+            try
+            {
+                using var startupTimeout =
+                    new CancellationTokenSource(HostTimeout);
+
+                await host.StartAsync(startupTimeout.Token);
+                return new TcpServerHarness(host, port);
+            }
+            catch
+            {
+                host.Dispose();
+                throw;
             }
         }
 
@@ -397,14 +522,87 @@ public sealed class TcpQotdServerTests
             }
 
             using var stopTimeout = new CancellationTokenSource(
-                timeout ?? TimeSpan.FromSeconds(5));
-            await _worker.StopAsync(stopTimeout.Token);
+                timeout ?? HostTimeout);
+
+            await _host.StopAsync(stopTimeout.Token);
             Stopped = true;
         }
 
         public async ValueTask DisposeAsync()
         {
-            await StopAsync();
+            try
+            {
+                await StopAsync();
+            }
+            finally
+            {
+                _host.Dispose();
+            }
+        }
+    }
+
+    private sealed class BlockingQuoteRepository : IQuoteRepository
+    {
+        private readonly Quote _quote;
+        private readonly TaskCompletionSource _release =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly SemaphoreSlim _startedSignal = new(0);
+        private int _startedCount;
+
+        public BlockingQuoteRepository(Quote quote)
+        {
+            _quote = quote;
+        }
+
+        public int StartedCount => Volatile.Read(ref _startedCount);
+
+        public async Task<Quote?> GetQuoteOfTheDayAsync(
+            DateOnly date,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _startedCount);
+            _startedSignal.Release();
+            await _release.Task.WaitAsync(cancellationToken);
+            return _quote;
+        }
+
+        public Task<Quote?> GetRandomQuoteAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Quote?>(null);
+
+        public Task<Quote> InsertQuoteAsync(
+            CreateQuoteRequest quote,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<Quote?> GetQuoteAsync(
+            long id,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Quote?>(null);
+
+        public Task<bool> DeleteQuoteAsync(
+            int id,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
+
+        public Task<bool> SetQuoteOfTheDayAsync(
+            DateOnly date,
+            long? quoteId = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
+
+        public void Release() =>
+            _release.TrySetResult();
+
+        public async Task WaitForStartedCountAsync(
+            int expectedCount,
+            TimeSpan timeout)
+        {
+            using var cancellation = new CancellationTokenSource(timeout);
+            while (StartedCount < expectedCount)
+            {
+                await _startedSignal.WaitAsync(cancellation.Token);
+            }
         }
     }
 
