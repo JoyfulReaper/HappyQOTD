@@ -1,3 +1,10 @@
+/*
+ * Happy QOTD Service
+ * Copyright (c) 2026 Kyle Givler
+ * Licensed under the MIT License.
+ */
+
+
 using HappyQOTD;
 
 var builder = WebApplication.CreateBuilder(args);
