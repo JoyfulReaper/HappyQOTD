@@ -492,7 +492,7 @@ public sealed class TcpQotdServerTests
                         Options.Create(options));
 
                     services.AddTcpServer<
-                        QotdConnectionHandler,
+                        QOTDConnectionHandler,
                         HappyQOTDOptions>();
 
                     services.AddHostedService<QotdLifecycleService>();

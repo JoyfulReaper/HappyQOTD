@@ -16,8 +16,8 @@ using System.Text;
 
 namespace HappyQOTD;
 
-public sealed class QotdConnectionHandler(
-    ILogger<QotdConnectionHandler> logger,
+public sealed class QOTDConnectionHandler(
+    ILogger<QOTDConnectionHandler> logger,
     IOptions<HappyQOTDOptions> options,
     IQuoteRepository quoteRepository,
     IMissionControlClient missionControlClient)

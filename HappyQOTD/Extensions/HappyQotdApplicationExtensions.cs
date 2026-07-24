@@ -124,7 +124,7 @@ public static class HappyQotdApplicationExtensions
         services.AddScoped<ApiKeyEndpointFilter>();
         if (qotdOptions.EnableTcpServer)
         {
-            services.AddTcpServer<QotdConnectionHandler, HappyQOTDOptions>();
+            services.AddTcpServer<QOTDConnectionHandler, HappyQOTDOptions>();
             services.AddHostedService<QotdLifecycleService>();
         }
         services.AddProblemDetails();

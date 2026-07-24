@@ -142,6 +142,7 @@ The main configuration sections are:
 | `QotdSecurity:AdminApiKey`             | API key required by quote write endpoints.                     |
 | `QOTD:ListenAddress`                   | TCP listener address.                                          |
 | `QOTD:Port`                            | TCP listener port. Defaults to `17`.                           |
+| `QOTD:EnableTcpServer`                 | Enables the shared hosted TCP server.                           |
 | `QOTD:ApiBaseUrl`                      | Configured HTTP API base URL for integrations.                 |
 | `QOTD:MaxConcurrentConnections`        | Maximum simultaneous TCP connections.                          |
 | `QOTD:RequestTimeoutSeconds`           | Configured request-timeout value reserved for the TCP service. |
@@ -157,6 +158,7 @@ Environment variables use double underscores, for example:
 QotdSecurity__AdminApiKey
 QOTD__ListenAddress
 QOTD__Port
+QOTD__EnableTcpServer
 QOTD__ApiBaseUrl
 QOTD__MaxConcurrentConnections
 QOTD__RequestTimeoutSeconds
@@ -251,9 +253,9 @@ Telemetry failures are logged and do not normally prevent the HTTP API or TCP se
 * [`Extensions/HappyQotdApplicationExtensions.cs`](./HappyQOTD/Extensions/HappyQotdApplicationExtensions.cs) registers services and middleware.
 * [`Routes/HappyQotdRouteExtensions.cs`](./HappyQOTD/Routes/HappyQotdRouteExtensions.cs) maps the HTTP endpoints and handlers.
 * [`QOTDConnectionHandler.cs`](./HappyQOTD/QOTDConnectionHandler.cs) handles connections from the shared hosted TCP server.
-* [`Data/QuoteDatabase.cs`](./HappyQOTD/HappyQOTD/Data/QuoteDatabase.cs) initializes the SQLite database.
-* [`Quotes/SqliteRepository.cs`](./HappyQOTD/HappyQOTD/Quotes/SqliteRepository.cs) implements quote persistence.
-* [`Events/QOTDJsonContext.cs`](./HappyQOTD/HappyQOTD/Events/QOTDJsonContext.cs) provides source-generated JSON metadata.
+* [`Data/QuoteDatabase.cs`](./HappyQOTD/Data/QuoteDatabase.cs) initializes the SQLite database.
+* [`Quotes/SqliteRepository.cs`](./HappyQOTD/Quotes/SqliteRepository.cs) implements quote persistence.
+* [`Events/QOTDJsonContext.cs`](./HappyQOTD/Events/QOTDJsonContext.cs) provides source-generated JSON metadata.
 
 ## License
 
