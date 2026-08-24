@@ -178,7 +178,8 @@ public sealed class QotdUdpServer(
                     payload: new QOTDServedEvent(
                         remote,
                         durationMilliseconds,
-                        succeeded),
+                        succeeded,
+                        QOTDServedEvent.UdpProtocol),
                     payloadTypeInfo:
                         QOTDJsonContext.Default.QOTDServedEvent,
                     occurredAt: occurredAt,

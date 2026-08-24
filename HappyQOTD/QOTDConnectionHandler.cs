@@ -157,7 +157,8 @@ public sealed class QOTDConnectionHandler(
                     payload: new QOTDServedEvent(
                         result.Remote,
                         result.DurationMilliseconds,
-                        result.Succeeded),
+                        result.Succeeded,
+                        QOTDServedEvent.TcpProtocol),
                     payloadTypeInfo: QOTDJsonContext.Default.QOTDServedEvent,
                     occurredAt: result.OccurredAt,
                     correlationId: result.CorrelationId,

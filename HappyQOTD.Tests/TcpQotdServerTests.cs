@@ -274,6 +274,7 @@ public sealed class TcpQotdServerTests
         Assert.True(payload.Succeeded);
         Assert.True(payload.DurationMilliseconds >= 0);
         Assert.NotEqual("unknown", payload.Remote);
+        Assert.Equal(QOTDServedEvent.TcpProtocol, payload.Protocol);
     }
 
     [Fact]
