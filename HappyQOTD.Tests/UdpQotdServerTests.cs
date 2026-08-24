@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text;
 
 namespace HappyQOTD.Tests;
@@ -42,6 +43,109 @@ public sealed class UdpQotdServerTests
             "garbage input that should not matter");
 
         Assert.Equal("Payload ignored\r\n", response);
+    }
+
+    [Fact]
+    public async Task DualModeIpv6WildcardAcceptsIpv4Loopback()
+    {
+        if (!CanBindIpv6Loopback())
+        {
+            return;
+        }
+
+        await using var server = await UdpServerHarness.StartAsync(
+            new Quote(1, "Dual mode IPv4"),
+            listenAddress: "::",
+            dualMode: true,
+            readinessAddress: IPAddress.Loopback);
+
+        string response = await ReadQuoteAsync(
+            server.Port,
+            IPAddress.Loopback);
+
+        Assert.Equal("Dual mode IPv4\r\n", response);
+    }
+
+    [Fact]
+    public async Task DualModeIpv6WildcardAcceptsIpv6Loopback()
+    {
+        if (!CanBindIpv6Loopback())
+        {
+            return;
+        }
+
+        await using var server = await UdpServerHarness.StartAsync(
+            new Quote(1, "Dual mode IPv6"),
+            listenAddress: "::",
+            dualMode: true,
+            readinessAddress: IPAddress.IPv6Loopback);
+
+        string response = await ReadQuoteAsync(
+            server.Port,
+            IPAddress.IPv6Loopback);
+
+        Assert.Equal("Dual mode IPv6\r\n", response);
+    }
+
+    [Fact]
+    public void DualModeRequiresIpv6WildcardListenAddress()
+    {
+        MethodInfo createSocket =
+            typeof(QotdUdpServer).GetMethod(
+                "CreateSocket",
+                BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        var options = new HappyQOTDOptions
+        {
+            ListenAddress = "127.0.0.1",
+            DualMode = true
+        };
+
+        TargetInvocationException invocationException =
+            Assert.Throws<TargetInvocationException>(() =>
+                createSocket.Invoke(
+                    null,
+                    [options]));
+
+        InvalidOperationException exception =
+            Assert.IsType<InvalidOperationException>(
+                invocationException.InnerException);
+
+        Assert.Equal(
+            "UDP dual mode requires ListenAddress to be the IPv6 wildcard address '::'.",
+            exception.Message);
+    }
+
+    [Fact]
+    public async Task Ipv6WildcardWithoutDualModeDoesNotAcceptIpv4Loopback()
+    {
+        if (!CanBindIpv6Loopback())
+        {
+            return;
+        }
+
+        await using var server = await UdpServerHarness.StartAsync(
+            new Quote(1, "IPv6 only"),
+            listenAddress: "::",
+            dualMode: false,
+            readinessAddress: IPAddress.IPv6Loopback);
+
+        string ipv6Response = await ReadQuoteAsync(
+            server.Port,
+            IPAddress.IPv6Loopback);
+
+        Assert.Equal("IPv6 only\r\n", ipv6Response);
+
+        Exception? exception = await Record.ExceptionAsync(() =>
+            ReadQuoteAsync(
+                server.Port,
+                IPAddress.Loopback,
+                "hello",
+                TimeSpan.FromMilliseconds(250)));
+
+        Assert.True(
+            exception is TimeoutException or SocketException,
+            $"Expected no IPv4 response, but got {exception?.GetType().Name ?? "a response"}.");
     }
 
     [Fact]
@@ -115,8 +219,9 @@ public sealed class UdpQotdServerTests
     }
 
     private static async Task WaitUntilUdpServerRespondsAsync(
-    int port,
-    CancellationToken cancellationToken)
+        int port,
+        IPAddress address,
+        CancellationToken cancellationToken)
     {
         while (true)
         {
@@ -124,6 +229,7 @@ public sealed class UdpQotdServerTests
             {
                 _ = await ReadQuoteAsync(
                     port,
+                    address,
                     "ready",
                     TimeSpan.FromMilliseconds(250));
 
@@ -149,15 +255,26 @@ public sealed class UdpQotdServerTests
         string payload = "hello") =>
         ReadQuoteAsync(
             port,
+            IPAddress.Loopback,
             payload,
+            ShortTimeout);
+
+    private static Task<string> ReadQuoteAsync(
+        int port,
+        IPAddress address) =>
+        ReadQuoteAsync(
+            port,
+            address,
+            "hello",
             ShortTimeout);
 
     private static async Task<string> ReadQuoteAsync(
         int port,
+        IPAddress address,
         string payload,
         TimeSpan timeout)
     {
-        using var client = new UdpClient();
+        using var client = new UdpClient(address.AddressFamily);
 
         byte[] requestBytes =
             Encoding.ASCII.GetBytes(payload);
@@ -165,7 +282,7 @@ public sealed class UdpQotdServerTests
         await client.SendAsync(
             requestBytes,
             requestBytes.Length,
-            new IPEndPoint(IPAddress.Loopback, port));
+            new IPEndPoint(address, port));
 
         Task<UdpReceiveResult> receiveTask =
             client.ReceiveAsync();
@@ -176,17 +293,55 @@ public sealed class UdpQotdServerTests
         return Encoding.UTF8.GetString(result.Buffer);
     }
 
-    private static int GetAvailablePort()
+    private static bool CanBindIpv6Loopback()
     {
+        if (!Socket.OSSupportsIPv6)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var socket =
+                new Socket(
+                    AddressFamily.InterNetworkV6,
+                    SocketType.Dgram,
+                    ProtocolType.Udp);
+
+            socket.DualMode = false;
+            socket.Bind(
+                new IPEndPoint(
+                    IPAddress.IPv6Loopback,
+                    0));
+
+            return true;
+        }
+        catch (SocketException)
+        {
+            return false;
+        }
+    }
+
+    private static int GetAvailablePort(
+        string listenAddress,
+        bool dualMode)
+    {
+        IPAddress address = IPAddress.Parse(listenAddress);
+
         using var socket =
             new Socket(
-                AddressFamily.InterNetwork,
+                address.AddressFamily,
                 SocketType.Dgram,
                 ProtocolType.Udp);
 
+        if (address.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            socket.DualMode = dualMode;
+        }
+
         socket.Bind(
             new IPEndPoint(
-                IPAddress.Loopback,
+                address,
                 0));
 
         return ((IPEndPoint)socket.LocalEndPoint!).Port;
@@ -211,17 +366,23 @@ public sealed class UdpQotdServerTests
             Quote? quote,
             IMissionControlClient? missionControl = null,
             bool truncateQuoteResponses = true,
-            int maximumQuoteResponseCharacters = 512)
+            int maximumQuoteResponseCharacters = 512,
+            string listenAddress = "127.0.0.1",
+            bool dualMode = false,
+            IPAddress? readinessAddress = null)
         {
-            int port = GetAvailablePort();
+            int port = GetAvailablePort(
+                listenAddress,
+                dualMode);
 
             var missionControlClient =
                 missionControl ?? new RecordingMissionControlClient();
 
             var options = new HappyQOTDOptions
             {
-                ListenAddress = "127.0.0.1",
+                ListenAddress = listenAddress,
                 Port = port,
+                DualMode = dualMode,
                 EnableTcpServer = false,
                 EnableUdpServer = true,
                 TruncateQuoteResponses = truncateQuoteResponses,
@@ -257,6 +418,7 @@ public sealed class UdpQotdServerTests
 
                 await WaitUntilUdpServerRespondsAsync(
                     port,
+                    readinessAddress ?? IPAddress.Loopback,
                     startupTimeout.Token);
 
                 return new UdpServerHarness(

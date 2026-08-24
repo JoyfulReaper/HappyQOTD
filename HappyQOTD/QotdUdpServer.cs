@@ -32,9 +32,10 @@ public sealed class QotdUdpServer(
         using Socket socket = CreateSocket(currentOptions);
 
         logger.LogInformation(
-            "HappyQOTD UDP server listening on {ListenAddress}:{Port}.",
+            "HappyQOTD UDP server listening on {ListenAddress}:{Port} (dual mode: {DualMode}).",
             currentOptions.ListenAddress,
-            currentOptions.Port);
+            currentOptions.Port,
+            currentOptions.DualMode);
 
         byte[] buffer = new byte[1024];
 
@@ -221,6 +222,13 @@ public sealed class QotdUdpServer(
         IPAddress listenAddress =
             ParseListenAddress(options.ListenAddress);
 
+        if (options.DualMode &&
+            !listenAddress.Equals(IPAddress.IPv6Any))
+        {
+            throw new InvalidOperationException(
+                "UDP dual mode requires ListenAddress to be the IPv6 wildcard address '::'.");
+        }
+
         var socket =
             new Socket(
                 listenAddress.AddressFamily,
@@ -234,7 +242,7 @@ public sealed class QotdUdpServer(
 
         if (listenAddress.AddressFamily == AddressFamily.InterNetworkV6)
         {
-            socket.DualMode = true;
+            socket.DualMode = options.DualMode;
         }
 
         socket.Bind(
