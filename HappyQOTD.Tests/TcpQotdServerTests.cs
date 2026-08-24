@@ -1,6 +1,3 @@
-using System.Net;
-using System.Net.Sockets;
-using System.Text.Json.Serialization.Metadata;
 using HappyQOTD.Events;
 using HappyQOTD.Quotes;
 using HappyQOTD.Tests.TestInfrastructure;
@@ -10,6 +7,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Net;
+using System.Net.Sockets;
+using System.Text.Json.Serialization.Metadata;
 
 namespace HappyQOTD.Tests;
 
@@ -20,6 +20,38 @@ public sealed class TcpQotdServerTests
 
     private static readonly TimeSpan ShortTimeout =
         TimeSpan.FromSeconds(2);
+
+    [Fact]
+    public async Task LongQuoteIsTruncatedWhenConfigured()
+    {
+        string longText = new('x', 600);
+
+        await using var server = await TcpServerHarness.StartAsync(
+            new Quote(1, longText),
+            truncateQuoteResponses: true,
+            maximumQuoteResponseCharacters: 512);
+
+        string response = await ReadQuoteAsync(server.Port);
+
+        Assert.Equal(512, response.Length);
+        Assert.EndsWith("\r\n", response);
+    }
+
+    [Fact]
+    public async Task LongQuoteIsNotTruncatedWhenConfigured()
+    {
+        string longText = new('x', 600);
+
+        await using var server = await TcpServerHarness.StartAsync(
+            new Quote(1, longText),
+            truncateQuoteResponses: false,
+            maximumQuoteResponseCharacters: 512);
+
+        string response = await ReadQuoteAsync(server.Port);
+
+        Assert.Equal($"{longText}\r\n", response);
+        Assert.True(response.Length > 512);
+    }
 
     [Fact]
     public async Task ConnectingReturnsCurrentQuoteWithAuthorAndSource()
@@ -449,18 +481,24 @@ public sealed class TcpQotdServerTests
             Quote? quote,
             IMissionControlClient? missionControl = null,
             int maxConcurrentConnections = 4,
-            string[]? ignoredTelemetryAddresses = null) =>
-            StartAsync(
-                new FakeQuoteRepository(quote),
-                missionControl,
-                maxConcurrentConnections,
-                ignoredTelemetryAddresses);
+            string[]? ignoredTelemetryAddresses = null,
+            bool truncateQuoteResponses = true,
+            int maximumQuoteResponseCharacters = 512) =>
+                 StartAsync(
+                    new FakeQuoteRepository(quote),
+                    missionControl,
+                    maxConcurrentConnections,
+                    ignoredTelemetryAddresses,
+                    truncateQuoteResponses,
+                    maximumQuoteResponseCharacters);
 
         public static async Task<TcpServerHarness> StartAsync(
             IQuoteRepository repository,
             IMissionControlClient? missionControl = null,
             int maxConcurrentConnections = 4,
-            string[]? ignoredTelemetryAddresses = null)
+            string[]? ignoredTelemetryAddresses = null,
+            bool truncateQuoteResponses = true,
+            int maximumQuoteResponseCharacters = 512)
         {
             int port = GetAvailablePort();
             var missionControlClient =
@@ -469,6 +507,8 @@ public sealed class TcpQotdServerTests
             {
                 ListenAddress = "127.0.0.1",
                 Port = port,
+                TruncateQuoteResponses = truncateQuoteResponses,
+                MaximumQuoteResponseCharacters = maximumQuoteResponseCharacters,
                 EnableTcpServer = true,
                 MaxConcurrentConnections =
                     maxConcurrentConnections,
