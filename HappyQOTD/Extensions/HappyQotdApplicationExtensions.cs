@@ -120,6 +120,11 @@ public static class HappyQotdApplicationExtensions
             services.AddTcpServer<QOTDConnectionHandler, HappyQOTDOptions>();
             services.AddHostedService<QotdLifecycleService>();
         }
+
+        if (qotdOptions.EnableUdpServer)
+        {
+            services.AddHostedService<QotdUdpServer>();
+        }
         services.AddProblemDetails();
 
         return services;

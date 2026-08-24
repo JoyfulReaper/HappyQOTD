@@ -70,13 +70,13 @@ public sealed class QOTDConnectionHandler(
         {
             DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-            Quote? quote = await quoteRepository.GetQuoteOfTheDayAsync(
-                today,
-                cancellationToken);
+            Quote? quote = await quoteRepository.GetQuoteOfTheDayAsync(today, cancellationToken);
 
             string response = quote is null
                 ? "No quote is available today.\r\n"
                 : FormatQuote(quote);
+
+            response = QotdResponseFormatter.ApplyLengthPolicy(response, options);
 
             byte[] responseBytes = Encoding.UTF8.GetBytes(response);
 
@@ -218,18 +218,7 @@ public sealed class QOTDConnectionHandler(
 
     internal static string FormatQuote(Quote quote)
     {
-        string? attribution = quote.Author;
-
-        if (!string.IsNullOrWhiteSpace(quote.Source))
-        {
-            attribution = string.IsNullOrWhiteSpace(attribution)
-                ? quote.Source
-                : $"{attribution}, {quote.Source}";
-        }
-
-        return string.IsNullOrWhiteSpace(attribution)
-            ? $"{quote.Text}\r\n"
-            : $"{quote.Text}\r\n-- {attribution}\r\n";
+        return QotdResponseFormatter.FormatQuote(quote);
     }
 }
 
