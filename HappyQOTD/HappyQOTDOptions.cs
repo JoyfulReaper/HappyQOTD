@@ -15,6 +15,7 @@ public sealed class HappyQOTDOptions : ITcpServerOptions
 
     public string ListenAddress { get; set; } = "127.0.0.1";
     public int Port { get; set; } = 17;
+    public bool DualMode { get; set; }
     public bool EnableTcpServer { get; set; } = true;
     public bool EnableUdpServer { get; set; } = true;
     public bool TruncateQuoteResponses { get; set; } = true;
