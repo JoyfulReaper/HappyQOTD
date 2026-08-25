@@ -115,6 +115,44 @@ public sealed class UdpQotdServerTests
     }
 
     [Fact]
+    public async Task KeepsServingWhileTelemetryIsBlocked()
+    {
+        var missionControl = new RecordingMissionControlClient(
+            delayUntilReleased: true);
+
+        await using var server = await UdpServerHarness.StartAsync(
+            new Quote(1, "Still serving"),
+            missionControl);
+
+        string firstResponse =
+            await ReadQuoteAsync(server.Port);
+
+        await missionControl.Entered.WaitAsync(ShortTimeout);
+
+        string secondResponse =
+            await ReadQuoteAsync(
+                server.Port,
+                IPAddress.Loopback,
+                "second",
+                TimeSpan.FromMilliseconds(500));
+
+        Assert.Equal(
+            "Still serving\r\n",
+            firstResponse);
+
+        Assert.Equal(
+            "Still serving\r\n",
+            secondResponse);
+
+        Assert.Equal(
+            2,
+            missionControl.Calls.Count(call =>
+                call.EventType == QOTDServedEvent.EventName));
+
+        missionControl.Release();
+    }
+
+    [Fact]
     public async Task Ipv6WildcardWithoutDualModeDoesNotAcceptIpv4Loopback()
     {
         if (!CanBindIpv6Loopback())

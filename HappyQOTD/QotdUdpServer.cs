@@ -170,7 +170,7 @@ public sealed class QotdUdpServer(
             return;
         }
 
-        await PublishTelemetryAsync(
+        _ = PublishTelemetryAsync(
             remote,
             stopwatch.ElapsedMilliseconds,
             succeeded,
