@@ -56,8 +56,7 @@ public sealed class UdpQotdServerTests
         await using var server = await UdpServerHarness.StartAsync(
             new Quote(1, "Dual mode IPv4"),
             listenAddress: "::",
-            dualMode: true,
-            readinessAddress: IPAddress.Loopback);
+            dualMode: true);
 
         string response = await ReadQuoteAsync(
             server.Port,
@@ -77,8 +76,7 @@ public sealed class UdpQotdServerTests
         await using var server = await UdpServerHarness.StartAsync(
             new Quote(1, "Dual mode IPv6"),
             listenAddress: "::",
-            dualMode: true,
-            readinessAddress: IPAddress.IPv6Loopback);
+            dualMode: true);
 
         string response = await ReadQuoteAsync(
             server.Port,
@@ -127,8 +125,7 @@ public sealed class UdpQotdServerTests
         await using var server = await UdpServerHarness.StartAsync(
             new Quote(1, "IPv6 only"),
             listenAddress: "::",
-            dualMode: false,
-            readinessAddress: IPAddress.IPv6Loopback);
+            dualMode: false);
 
         string ipv6Response = await ReadQuoteAsync(
             server.Port,
@@ -216,38 +213,6 @@ public sealed class UdpQotdServerTests
         Assert.True(payload.DurationMilliseconds >= 0);
         Assert.NotEqual("unknown", payload.Remote);
         Assert.Equal(QOTDServedEvent.UdpProtocol, payload.Protocol);
-    }
-
-    private static async Task WaitUntilUdpServerRespondsAsync(
-        int port,
-        IPAddress address,
-        CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            try
-            {
-                _ = await ReadQuoteAsync(
-                    port,
-                    address,
-                    "ready",
-                    TimeSpan.FromMilliseconds(250));
-
-                return;
-            }
-            catch (SocketException)
-                when (!cancellationToken.IsCancellationRequested)
-            {
-            }
-            catch (TimeoutException)
-                when (!cancellationToken.IsCancellationRequested)
-            {
-            }
-
-            await Task.Delay(
-                TimeSpan.FromMilliseconds(25),
-                cancellationToken);
-        }
     }
 
     private static Task<string> ReadQuoteAsync(
@@ -368,8 +333,7 @@ public sealed class UdpQotdServerTests
             bool truncateQuoteResponses = true,
             int maximumQuoteResponseCharacters = 512,
             string listenAddress = "127.0.0.1",
-            bool dualMode = false,
-            IPAddress? readinessAddress = null)
+            bool dualMode = false)
         {
             int port = GetAvailablePort(
                 listenAddress,
@@ -415,11 +379,6 @@ public sealed class UdpQotdServerTests
                     new CancellationTokenSource(HostTimeout);
 
                 await host.StartAsync(startupTimeout.Token);
-
-                await WaitUntilUdpServerRespondsAsync(
-                    port,
-                    readinessAddress ?? IPAddress.Loopback,
-                    startupTimeout.Token);
 
                 return new UdpServerHarness(
                     host,
