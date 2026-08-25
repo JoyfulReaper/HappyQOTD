@@ -115,6 +115,35 @@ public sealed class UdpQotdServerTests
     }
 
     [Fact]
+    public async Task ImmediateStopReleasesUdpPort()
+    {
+        await using var server =
+            await UdpServerHarness.StartAsync(
+                new Quote(1, "Immediate stop"));
+
+        int port = server.Port;
+
+        await server.StopAsync();
+
+        using var socket =
+            new Socket(
+                AddressFamily.InterNetwork,
+                SocketType.Dgram,
+                ProtocolType.Udp);
+
+        socket.ExclusiveAddressUse = true;
+
+        socket.Bind(
+            new IPEndPoint(
+                IPAddress.Loopback,
+                port));
+
+        Assert.Equal(
+            port,
+            ((IPEndPoint)socket.LocalEndPoint!).Port);
+    }
+
+    [Fact]
     public async Task KeepsServingWhileTelemetryIsBlocked()
     {
         var missionControl = new RecordingMissionControlClient(
