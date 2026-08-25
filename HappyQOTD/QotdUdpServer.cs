@@ -23,13 +23,39 @@ public sealed class QotdUdpServer(
     : BackgroundService
 {
     private static readonly TimeSpan TelemetryPublishTimeout = TimeSpan.FromSeconds(2);
+    private Socket? _socket;
+
+    public override async Task StartAsync(
+    CancellationToken cancellationToken)
+    {
+        HappyQOTDOptions currentOptions = options.Value;
+
+        _socket = CreateSocket(currentOptions);
+
+        logger.LogInformation(
+            "HappyQOTD UDP socket bound to {Endpoint} (dual mode: {DualMode}).",
+            _socket.LocalEndPoint,
+            currentOptions.DualMode);
+
+        try
+        {
+            await base.StartAsync(cancellationToken);
+        }
+        catch
+        {
+            _socket.Dispose();
+            _socket = null;
+            throw;
+        }
+    }
 
     protected override async Task ExecuteAsync(
         CancellationToken stoppingToken)
     {
         HappyQOTDOptions currentOptions = options.Value;
 
-        using Socket socket = CreateSocket(currentOptions);
+        Socket socket = _socket
+            ?? throw new InvalidOperationException("UDP QOTD socket was not initialized.");
 
         logger.LogInformation(
             "HappyQOTD UDP server listening on {ListenAddress}:{Port} (dual mode: {DualMode}).",
@@ -39,42 +65,53 @@ public sealed class QotdUdpServer(
 
         byte[] buffer = new byte[1024];
 
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            EndPoint remoteEndPoint =
-                socket.AddressFamily == AddressFamily.InterNetworkV6
-                    ? new IPEndPoint(IPAddress.IPv6Any, 0)
-                    : new IPEndPoint(IPAddress.Any, 0);
-
-            SocketReceiveFromResult received;
-
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                received =
-                    await socket.ReceiveFromAsync(
-                        buffer,
-                        SocketFlags.None,
-                        remoteEndPoint,
-                        stoppingToken);
-            }
-            catch (OperationCanceledException)
-                when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (SocketException exception)
-            {
-                logger.LogWarning(
-                    exception,
-                    "UDP receive failed.");
+                EndPoint remoteEndPoint =
+                    socket.AddressFamily == AddressFamily.InterNetworkV6
+                        ? new IPEndPoint(IPAddress.IPv6Any, 0)
+                        : new IPEndPoint(IPAddress.Any, 0);
 
-                continue;
-            }
+                SocketReceiveFromResult received;
 
-            await ServeDatagramAsync(
-                socket,
-                received.RemoteEndPoint,
-                stoppingToken);
+                try
+                {
+                    received =
+                        await socket.ReceiveFromAsync(
+                            buffer,
+                            SocketFlags.None,
+                            remoteEndPoint,
+                            stoppingToken);
+                }
+                catch (OperationCanceledException)
+                    when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (SocketException exception)
+                {
+                    logger.LogWarning(
+                        exception,
+                        "UDP receive failed.");
+
+                    continue;
+                }
+
+                await ServeDatagramAsync(
+                    socket,
+                    received.RemoteEndPoint,
+                    stoppingToken);
+            }
+        }
+        finally
+        {
+            socket.Dispose();
+            _socket = null;
+
+            logger.LogInformation(
+                "HappyQOTD UDP server stopped.");
         }
     }
 
@@ -133,7 +170,7 @@ public sealed class QotdUdpServer(
             return;
         }
 
-        await PublishTelemetryAsync(
+        _ = PublishTelemetryAsync(
             remote,
             stopwatch.ElapsedMilliseconds,
             succeeded,
