@@ -1,6 +1,6 @@
 # HappyQOTD
 
-HappyQOTD serves a daily quote through the classic Quote of the Day TCP protocol and an ASP.NET Core HTTP API. The daily quote is selected by UTC date and persisted in SQLite, so the TCP and HTTP services return the same quote.
+HappyQOTD serves a daily quote through the classic Quote of the Day protocol over TCP and UDP, plus an ASP.NET Core HTTP API. The daily quote is selected by UTC date and persisted in SQLite, so all three services return the same quote.
 
 > [!NOTE]
 > The included seed database contains only a small set of SFW sample quotes. It is separate from the quote collection used by the public instance.
@@ -8,6 +8,7 @@ HappyQOTD serves a daily quote through the classic Quote of the Day TCP protocol
 ## Services
 
 * TCP Quote of the Day server on port `17`
+* UDP Quote of the Day server on port `17`
 * ASP.NET Core Minimal API
 * SQLite quote storage
 * Optional Mission Control telemetry
@@ -108,49 +109,69 @@ curl -X DELETE http://localhost:5269/api/quotes/4 \
 
 When running in the Development environment, the app maps the generated OpenAPI document through ASP.NET Core OpenAPI.
 
-## TCP QOTD
+## Quote of the Day Protocol
 
-The TCP server sends the current quote and closes the connection:
+The TCP server sends the current quote and closes the connection. The UDP server ignores the contents of each received datagram and replies with the current quote.
+
+Query the local TCP server:
 
 ```bash
 nc 127.0.0.1 17
 ```
 
+Query the local UDP server:
+
+```bash
+printf 'hello\n' | nc -u -w2 127.0.0.1 17
+```
+
 ### Try the public instance
 
-My live deployment can be queried directly:
+Query my live deployment over TCP:
 
 ```bash
 nc qotd.kgivler.com 17
 ```
 
+Or over UDP:
+
+```bash
+printf 'hello\n' | nc -u -w2 qotd.kgivler.com 17
+```
+
 > [!WARNING]
 > This instance uses my personal, unfiltered quote collection. Most quotes are programming-related, but some contain strong or obscene language or discuss suicide and other sensitive subjects.
 
-The TCP listener uses `QOTD:ListenAddress` and `QOTD:Port`. Binding to port `17` may require `NET_BIND_SERVICE` or elevated privileges on Linux.
+Both listeners use `QOTD:ListenAddress` and `QOTD:Port`. Set `QOTD:ListenAddress` to `::` and `QOTD:DualMode` to `true` for an IPv4/IPv6 dual-stack deployment. Binding to port `17` may require `NET_BIND_SERVICE` or elevated privileges on Linux.
+
+Set `QOTD:TruncateQuoteResponses` to `true` with `QOTD:MaximumQuoteResponseCharacters` set to `512` for RFC-style response lengths. Truncation can be disabled to return the complete formatted quote.
 
 ## Daily Selection
 
-The quote of the day is keyed by the current UTC date. The repository selects and stores a quote when that date has no existing selection. Subsequent HTTP and TCP requests for that date return the stored selection, including after restarts.
+The quote of the day is keyed by the current UTC date. The repository selects and stores a quote when that date has no existing selection. Subsequent HTTP, TCP, and UDP requests for that date return the stored selection, including after restarts.
 
 ## Configuration
 
 The main configuration sections are:
 
-| Setting                                | Description                                                    |
-| -------------------------------------- | -------------------------------------------------------------- |
-| `QotdSecurity:AdminApiKey`             | API key required by quote write endpoints.                     |
-| `QOTD:ListenAddress`                   | TCP listener address.                                          |
-| `QOTD:Port`                            | TCP listener port. Defaults to `17`.                           |
-| `QOTD:EnableTcpServer`                 | Enables the shared hosted TCP server.                           |
-| `QOTD:ApiBaseUrl`                      | Configured HTTP API base URL for integrations.                 |
-| `QOTD:MaxConcurrentConnections`        | Maximum simultaneous TCP connections.                          |
-| `QOTD:RequestTimeoutSeconds`           | Configured request-timeout value reserved for the TCP service. |
-| `QOTD:TelemetryIgnoredRemoteAddresses` | TCP client addresses excluded from served-quote telemetry.     |
-| `MissionControl:Enabled`               | Enables Mission Control telemetry.                             |
-| `MissionControl:BaseUrl`               | Mission Control Gateway base URL.                              |
-| `MissionControl:ApiKey`                | Mission Control source API key.                                |
-| `MissionControl:TimeoutMilliseconds`   | Mission Control request timeout.                               |
+| Setting                                  | Description                                                                        |
+| ---------------------------------------- | ---------------------------------------------------------------------------------- |
+| `QotdSecurity:AdminApiKey`               | API key required by quote write endpoints.                                         |
+| `QOTD:ListenAddress`                     | TCP and UDP listener address. Use `::` for IPv6 or dual-stack binding.              |
+| `QOTD:Port`                              | TCP and UDP listener port. Defaults to `17`.                                        |
+| `QOTD:DualMode`                          | Enables IPv4 and IPv6 on an IPv6 listener. Use with `ListenAddress` set to `::`.    |
+| `QOTD:EnableTcpServer`                   | Enables the shared hosted TCP server.                                               |
+| `QOTD:EnableUdpServer`                   | Enables the UDP server.                                                             |
+| `QOTD:TruncateQuoteResponses`            | Truncates TCP and UDP responses when enabled.                                       |
+| `QOTD:MaximumQuoteResponseCharacters`    | Maximum response length when truncation is enabled. Defaults to `512`.              |
+| `QOTD:ApiBaseUrl`                        | Configured HTTP API base URL for integrations.                                      |
+| `QOTD:MaxConcurrentConnections`          | Maximum simultaneous TCP connections.                                              |
+| `QOTD:RequestTimeoutSeconds`             | Configured request-timeout value reserved for the TCP service.                     |
+| `QOTD:TelemetryIgnoredRemoteAddresses`   | TCP and UDP client addresses excluded from served-quote telemetry.                 |
+| `MissionControl:Enabled`                 | Enables Mission Control telemetry.                                                 |
+| `MissionControl:BaseUrl`                 | Mission Control Gateway base URL.                                                  |
+| `MissionControl:ApiKey`                  | Mission Control source API key.                                                    |
+| `MissionControl:TimeoutMilliseconds`     | Mission Control request timeout.                                                   |
 
 Environment variables use double underscores, for example:
 
@@ -158,7 +179,11 @@ Environment variables use double underscores, for example:
 QotdSecurity__AdminApiKey
 QOTD__ListenAddress
 QOTD__Port
+QOTD__DualMode
 QOTD__EnableTcpServer
+QOTD__EnableUdpServer
+QOTD__TruncateQuoteResponses
+QOTD__MaximumQuoteResponseCharacters
 QOTD__ApiBaseUrl
 QOTD__MaxConcurrentConnections
 QOTD__RequestTimeoutSeconds
@@ -208,8 +233,13 @@ network_mode: host
 
 environment:
   ASPNETCORE_URLS: http://127.0.0.1:5193
-  QOTD__ListenAddress: 0.0.0.0
+  QOTD__ListenAddress: "::"
   QOTD__Port: 17
+  QOTD__DualMode: "true"
+  QOTD__EnableTcpServer: "true"
+  QOTD__EnableUdpServer: "true"
+  QOTD__TruncateQuoteResponses: "false"
+  QOTD__MaximumQuoteResponseCharacters: 512
   MissionControl__Enabled: "true"
   MissionControl__BaseUrl: http://127.0.0.1:5190
 
@@ -218,9 +248,11 @@ depends_on:
     condition: service_healthy
 ```
 
+With host networking, Docker `ports` mappings are not used. The host and provider firewalls must allow both TCP port `17` and UDP port `17`.
+
 The Gateway health check is `/health/ready`, which waits for its RabbitMQ connection and channel to be open. Use `docker compose up -d --build` after changing the image or application code. Use `--force-recreate` when container configuration or environment variables changed and the existing containers need to be replaced.
 
-The container also needs a writable `/app/Data` volume for SQLite and `NET_BIND_SERVICE` when binding TCP port `17`:
+The container also needs a writable `/app/Data` volume for SQLite and `NET_BIND_SERVICE` when binding port `17`:
 
 ```yaml
 volumes:
@@ -245,7 +277,9 @@ When enabled, HappyQOTD publishes these event types:
 * `happyqotd.api.randomquote.served`
 * `happyqotd.api.quote.deleted`
 
-Telemetry failures are logged and do not normally prevent the HTTP API or TCP service from serving quotes. The startup event is attempted once when the shared hosted TCP server starts; restarting HappyQOTD retries it.
+The `happyqotd.qotd.served` payload includes a `protocol` field with values such as `tcp` and `udp`, allowing requests to be distinguished by transport.
+
+Telemetry failures are logged and do not normally prevent the HTTP API, TCP server, or UDP server from serving quotes. The startup event is attempted once when the QOTD service starts; restarting HappyQOTD retries it.
 
 ## Code Layout
 
@@ -253,6 +287,7 @@ Telemetry failures are logged and do not normally prevent the HTTP API or TCP se
 * [`Extensions/HappyQotdApplicationExtensions.cs`](./HappyQOTD/Extensions/HappyQotdApplicationExtensions.cs) registers services and middleware.
 * [`Routes/HappyQotdRouteExtensions.cs`](./HappyQOTD/Routes/HappyQotdRouteExtensions.cs) maps the HTTP endpoints and handlers.
 * [`QOTDConnectionHandler.cs`](./HappyQOTD/QOTDConnectionHandler.cs) handles connections from the shared hosted TCP server.
+* [`QotdUdpServer.cs`](./HappyQOTD/QotdUdpServer.cs) handles UDP datagrams.
 * [`Data/QuoteDatabase.cs`](./HappyQOTD/Data/QuoteDatabase.cs) initializes the SQLite database.
 * [`Quotes/SqliteRepository.cs`](./HappyQOTD/Quotes/SqliteRepository.cs) implements quote persistence.
 * [`Events/QOTDJsonContext.cs`](./HappyQOTD/Events/QOTDJsonContext.cs) provides source-generated JSON metadata.
