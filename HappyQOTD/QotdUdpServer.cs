@@ -49,6 +49,20 @@ public sealed class QotdUdpServer(
         }
     }
 
+    public override async Task StopAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await base.StopAsync(cancellationToken);
+        }
+        finally
+        {
+            _socket?.Dispose();
+            _socket = null;
+        }
+    }
+
     protected override async Task ExecuteAsync(
         CancellationToken stoppingToken)
     {
