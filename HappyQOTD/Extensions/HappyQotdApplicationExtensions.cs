@@ -44,7 +44,9 @@ public static class HappyQotdApplicationExtensions
                     policy.WithOrigins(
                         "https://kgivler.com",
                         "https://www.kgivler.com",
-                        "http://site.ygg.kgivler.com")
+                        "http://site.ygg.kgivler.com",
+                        "https://kgivler.dn42",
+                        "http://kgivler.dn42")
                         .AllowAnyHeader()
                         .AllowAnyMethod();
                 });
